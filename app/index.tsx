@@ -30,6 +30,7 @@ const Page = () => {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isConverting, setIsConverting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const ffmpegRef = useRef<FFmpeg>(new FFmpeg());
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -151,6 +152,8 @@ const Page = () => {
 
       setAudioUrl(audioUrl);
       setStatus("Conversion complete");
+      setError(null);
+      setStatus("Conversion complete");
     } catch (error) {
       if ((error as Error).message !== "AbortError") {
         setError((error as Error).message);
@@ -162,21 +165,28 @@ const Page = () => {
 
   const downloadPrivateDriveVideo = async (apiKey: string) => {
     const match = videoUrl.match(/\/d\/([^/]+)\//);
-    if (!match) throw new Error("Invalid Google Drive URL");
+    if (!match) {
+      setError("Invalid Google Drive URL");
+      return;
+    }
 
     const fileId = match[1];
-
     const downloadUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${apiKey}`;
 
     try {
+      setIsDownloading(true);
+      setError(null);
       const response = await fetch(downloadUrl);
-      if (!response.ok) throw new Error("Failed to download video");
+      //   if (!response.ok) throw new Error("Failed to download video");
 
       const blob = await response.blob();
-
       setVideo(new File([blob], "downloaded_video.mp4", { type: blob.type }));
+      setStatus("Video downloaded successfully");
     } catch (error) {
       console.error("Download Error:", error);
+      setError("Failed to download video. Please check the URL and try again.");
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -260,8 +270,16 @@ const Page = () => {
                         "AIzaSyBPzfaigmE8lZnwah_N8eBFYX06Mm8RcCQ"
                       );
                     }}
+                    disabled={isDownloading}
                   >
-                    Download
+                    {isDownloading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Downloading...
+                      </>
+                    ) : (
+                      "Download"
+                    )}
                   </Button>
                 </div>
               </TabsContent>
@@ -313,11 +331,15 @@ const Page = () => {
                 )}
               </div>
 
-              {status === "Converting..." && (
+              {isConverting && (
                 <div className="mt-4 space-y-2">
+                  <div className="flex justify-between text-sm text-muted-foreground mb-1">
+                    <span>Converting...</span>
+                    <span>{progress}%</span>
+                  </div>
                   <Progress value={progress} className="h-2" />
                   <p className="text-sm text-center text-muted-foreground">
-                    {progress}% complete
+                    {status}
                   </p>
                 </div>
               )}
@@ -330,6 +352,35 @@ const Page = () => {
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Error</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2"
+              onClick={() => setError(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </Alert>
+        )}
+
+        {status === "Conversion complete" && !error && (
+          <Alert
+            variant="default"
+            className="mb-6 bg-green-50 border-green-200"
+          >
+            <CheckCircle className="h-4 w-4 text-green-500" />
+            <AlertTitle>Success</AlertTitle>
+            <AlertDescription>
+              Your video has been successfully converted to audio.
+            </AlertDescription>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2"
+              onClick={() => setStatus("")}
+            >
+              <X className="h-4 w-4" />
+            </Button>
           </Alert>
         )}
 
