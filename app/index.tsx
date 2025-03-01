@@ -8,6 +8,7 @@ import { fetchFile, toBlobURL } from "@ffmpeg/util";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 import {
   AlertCircle,
   CheckCircle,
@@ -16,10 +17,17 @@ import {
   FileVideo,
   LinkIcon,
   Loader2,
+  FileText,
+  Download,
+  Copy,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 
 const Page = () => {
   const [videoUrl, setVideoUrl] = useState<string>("");
@@ -28,9 +36,14 @@ const Page = () => {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [, setAudioBlob] = useState<Blob | null>(null);
   const [isConverting, setIsConverting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcription, setTranscription] = useState<string | null>(null);
+  const [enableTranscription, setEnableTranscription] = useState(true);
+  const [transcriptionProgress, setTranscriptionProgress] = useState(0);
 
   const ffmpegRef = useRef<FFmpeg>(new FFmpeg());
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -93,6 +106,7 @@ const Page = () => {
     if (file && file.type.startsWith("video/")) {
       setVideo(file);
       setAudioUrl(null);
+      setTranscription(null);
       setError(null);
     } else {
       setError("Please drop a valid video file");
@@ -104,6 +118,7 @@ const Page = () => {
     if (file) {
       setVideo(file);
       setAudioUrl(null);
+      setTranscription(null);
       setError(null);
     }
   };
@@ -113,6 +128,57 @@ const Page = () => {
     setIsConverting(false);
     setStatus("Conversion cancelled");
     setProgress(0);
+  };
+
+  const transcribeAudio = async (audioBlob: Blob) => {
+    if (!audioBlob) return;
+
+    try {
+      setIsTranscribing(true);
+      setTranscriptionProgress(0);
+
+      // Create a FormData object to send the audio file
+      const formData = new FormData();
+      formData.append("file", audioBlob, "audio.mp3");
+      formData.append("model", "openai/whisper-large-v3-turbo");
+
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setTranscriptionProgress((prev) => {
+          const newProgress = prev + Math.random() * 5;
+          return newProgress > 95 ? 95 : newProgress;
+        });
+      }, 1000);
+
+      // Make the API request to the Hugging Face Inference API
+      const response = await fetch(
+        "https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${
+              process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY || "hf_dummy_key"
+            }`,
+          },
+          body: formData,
+        }
+      );
+
+      clearInterval(progressInterval);
+      setTranscriptionProgress(100);
+
+      if (!response.ok) {
+        throw new Error(`Transcription failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      setTranscription(result.text);
+    } catch (error) {
+      console.error("Transcription error:", error);
+      setError(`Transcription failed: ${(error as Error).message}`);
+    } finally {
+      setIsTranscribing(false);
+    }
   };
 
   const convertToAudio = async () => {
@@ -127,6 +193,7 @@ const Page = () => {
       setProgress(0);
       setError(null);
       setAudioUrl(null);
+      setTranscription(null);
 
       abortControllerRef.current = new AbortController();
       const ffmpeg = ffmpegRef.current;
@@ -150,10 +217,14 @@ const Page = () => {
       const audioBlob = new Blob([data], { type: "audio/mp3" });
       const audioUrl = URL.createObjectURL(audioBlob);
 
+      setAudioBlob(audioBlob);
       setAudioUrl(audioUrl);
       setStatus("Conversion complete");
-      setError(null);
-      setStatus("Conversion complete");
+
+      // Start transcription if enabled
+      if (enableTranscription) {
+        await transcribeAudio(audioBlob);
+      }
     } catch (error) {
       if ((error as Error).message !== "AbortError") {
         setError((error as Error).message);
@@ -190,17 +261,39 @@ const Page = () => {
     }
   };
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setStatus("Transcription copied to clipboard");
+    setTimeout(() => {
+      if (status === "Transcription copied to clipboard") {
+        setStatus("");
+      }
+    }, 2000);
+  };
+
+  const downloadTranscription = () => {
+    if (!transcription) return;
+
+    const element = document.createElement("a");
+    const file = new Blob([transcription], { type: "text/plain" });
+    element.href = URL.createObjectURL(file);
+    element.download = `${video?.name.replace(/\.[^/.]+$/, "")}_transcript.txt`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-12 max-w-3xl">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-600 mb-4">
-            Video to Podcast Converter
+            Video to Podcast & Transcript
           </h1>
           <p className="text-muted-foreground max-w-xl mx-auto">
-            Transform your videos into professional podcast episodes instantly.
-            Perfect for content creators, educators, and businesses looking to
-            expand their podcast presence.
+            Transform your videos into professional podcast episodes with full
+            transcripts instantly. Perfect for content creators, educators, and
+            businesses.
           </p>
         </div>
 
@@ -240,7 +333,8 @@ const Page = () => {
                         or drag and drop
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Convert any video format into podcast-ready audio
+                        Convert any video format into podcast-ready audio with
+                        transcription
                       </p>
                     </div>
                     <Input
@@ -284,6 +378,23 @@ const Page = () => {
                 </div>
               </TabsContent>
             </Tabs>
+
+            <div className="mt-4 flex items-center space-x-2">
+              <Switch
+                id="transcription"
+                checked={enableTranscription}
+                onCheckedChange={setEnableTranscription}
+              />
+              <Label
+                htmlFor="transcription"
+                className="flex items-center gap-2"
+              >
+                <span>Enable Transcription</span>
+                <Badge variant="outline" className="ml-2 text-xs">
+                  Powered by Whisper
+                </Badge>
+              </Label>
+            </div>
           </CardContent>
         </Card>
 
@@ -316,7 +427,8 @@ const Page = () => {
                       Creating Podcast...
                     </>
                   ) : (
-                    "Create Podcast Episode"
+                    "Create Podcast Episode" +
+                    (enableTranscription ? " & Transcript" : "")
                   )}
                 </Button>
 
@@ -334,12 +446,25 @@ const Page = () => {
               {isConverting && (
                 <div className="mt-4 space-y-2">
                   <div className="flex justify-between text-sm text-muted-foreground mb-1">
-                    <span>Converting...</span>
+                    <span>Converting to audio...</span>
                     <span>{progress}%</span>
                   </div>
                   <Progress value={progress} className="h-2" />
                   <p className="text-sm text-center text-muted-foreground">
                     {status}
+                  </p>
+                </div>
+              )}
+
+              {isTranscribing && (
+                <div className="mt-4 space-y-2">
+                  <div className="flex justify-between text-sm text-muted-foreground mb-1">
+                    <span>Transcribing audio...</span>
+                    <span>{Math.round(transcriptionProgress)}%</span>
+                  </div>
+                  <Progress value={transcriptionProgress} className="h-2" />
+                  <p className="text-sm text-center text-muted-foreground">
+                    Using Whisper Large V3 Turbo to transcribe your audio...
                   </p>
                 </div>
               )}
@@ -366,12 +491,13 @@ const Page = () => {
         {status === "Conversion complete" && !error && (
           <Alert
             variant="default"
-            className="mb-6 bg-green-50 border-green-200"
+            className="mb-6 bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800"
           >
             <CheckCircle className="h-4 w-4 text-green-500" />
             <AlertTitle>Success</AlertTitle>
             <AlertDescription>
-              Your video has been successfully converted to audio.
+              Your video has been successfully converted to audio
+              {enableTranscription ? " and transcribed" : ""}.
             </AlertDescription>
             <Button
               variant="ghost"
@@ -385,7 +511,7 @@ const Page = () => {
         )}
 
         {audioUrl && (
-          <Card>
+          <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 mb-4">
                 <CheckCircle className="h-5 w-5 text-green-500" />
@@ -416,6 +542,47 @@ const Page = () => {
               >
                 Download Podcast Episode
               </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {transcription && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-purple-500" />
+                  <h3 className="font-semibold">Transcript</h3>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1"
+                    onClick={() => copyToClipboard(transcription)}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    <span>Copy</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1"
+                    onClick={downloadTranscription}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Download</span>
+                  </Button>
+                </div>
+              </div>
+              <Separator className="my-2" />
+              <div className="mt-4 max-h-96 overflow-y-auto">
+                <Textarea
+                  value={transcription}
+                  readOnly
+                  className="min-h-[200px] font-mono text-sm"
+                />
+              </div>
             </CardContent>
           </Card>
         )}
