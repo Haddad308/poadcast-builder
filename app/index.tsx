@@ -28,6 +28,15 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import isUsed from "@/firebase/check-email";
 
 const Page = () => {
   const [videoUrl, setVideoUrl] = useState<string>("");
@@ -44,6 +53,10 @@ const Page = () => {
   const [transcription, setTranscription] = useState<string | null>(null);
   const [enableTranscription, setEnableTranscription] = useState(true);
   const [transcriptionProgress, setTranscriptionProgress] = useState(0);
+
+  const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [open, setOpen] = useState(false);
 
   const ffmpegRef = useRef<FFmpeg>(new FFmpeg());
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -417,7 +430,7 @@ const Page = () => {
 
               <div className="space-y-4">
                 <Button
-                  onClick={convertToAudio}
+                  onClick={() => setOpen(true)}
                   className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                   disabled={!video || isConverting}
                 >
@@ -586,6 +599,62 @@ const Page = () => {
             </CardContent>
           </Card>
         )}
+
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>{"Download PDF"}</DialogTitle>
+              <DialogDescription>
+                {"Please enter your email to download the PDF."}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email address</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={"your@email.com"}
+                required
+              />
+              {emailError && (
+                <p className="text-sm font-medium text-destructive mt-1">
+                  {emailError}
+                </p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                onClick={async () => {
+                  const used = await isUsed(email, setEmailError);
+                  if (!used) {
+                    setEmailError("");
+                    setOpen(false);
+                    convertToAudio();
+                  }
+                }}
+                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                disabled={!video || isConverting}
+              >
+                {"Create Podcast Episode" +
+                  (enableTranscription ? " & Transcript" : "")}
+              </Button>
+
+              {isConverting && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={cancelConversion}
+                >
+                  Cancel Conversion
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
