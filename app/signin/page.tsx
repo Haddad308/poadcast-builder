@@ -68,10 +68,11 @@ export default function LoginPage() {
               <Image src={"/logo.webp"} width={50} height={50} alt="logo" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">
-              Sign in to your account
+              Transform Your Content
             </h1>
             <p className="text-gray-600 mt-2">
-              Enter your credentials to access your account
+              Sign in to convert your videos into audio and get detailed
+              transcriptions instantly
             </p>
           </div>
 
@@ -101,12 +102,6 @@ export default function LoginPage() {
                 <Label htmlFor="password" className="text-gray-700">
                   Password
                 </Label>
-                {/* <Link
-                  href="#"
-                  className="text-sm text-purple-600 hover:text-purple-800"
-                >
-                  Forgot password?
-                </Link> */}
               </div>
               <Input
                 id="password"
