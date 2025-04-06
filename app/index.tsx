@@ -37,8 +37,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import isUsed from "@/firebase/check-email";
+import { useAuth } from "@/firebase/auth-context";
+import { useRouter } from "next/navigation";
 
 const Page = () => {
+  const { user } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (user) {
+      router.push("/");
+    }
+  }, [user, router]);
+
   const [videoUrl, setVideoUrl] = useState<string>("");
   const [video, setVideo] = useState<File | null>(null);
   const [status, setStatus] = useState<string>("");
