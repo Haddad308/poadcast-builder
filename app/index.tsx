@@ -597,61 +597,6 @@ const Page = () => {
             </CardContent>
           </Card>
         )}
-
-        {/* <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>{"Download PDF"}</DialogTitle>
-              <DialogDescription>
-                {"Please enter your email to download the PDF."}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email address</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={"your@email.com"}
-                required
-              />
-              {emailError && (
-                <p className="text-sm font-medium text-destructive mt-1">
-                  {emailError}
-                </p>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button
-                onClick={async () => {
-                  const used = await isUsed(email, setEmailError);
-                  if (!used) {
-                    setEmailError("");
-                    setOpen(false);
-                  }
-                }}
-                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                disabled={!video || isConverting}
-              >
-                {"Create Podcast Episode" +
-                  (enableTranscription ? " & Transcript" : "")}
-              </Button>
-
-              {isConverting && (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={cancelConversion}
-                >
-                  Cancel Conversion
-                </Button>
-              )}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog> */}
       </div>
     </div>
   );
