@@ -24,7 +24,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/firebase/auth-context";
 import { Label } from "@/components/ui/label";
-import { getApiKey, saveApiKey } from "@/firebase/firestore";
+import { saveApiKey, getApiKey } from "@/firebase/firestore";
+import { getUserUsageStats } from "@/firebase/usage";
+import { Separator } from "@/components/ui/separator";
 
 export default function ConfigPage() {
   const { user } = useAuth();
@@ -36,6 +38,23 @@ export default function ConfigPage() {
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [usageStats, setUsageStats] = useState<any>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+
+  const fetchUsageStats = async () => {
+    if (!user) return;
+
+    try {
+      setIsLoadingStats(true);
+      const stats = await getUserUsageStats(user.uid);
+      setUsageStats(stats);
+    } catch (error) {
+      console.error("Error fetching usage stats:", error);
+    } finally {
+      setIsLoadingStats(false);
+    }
+  };
 
   useEffect(() => {
     if (!user) {
@@ -59,6 +78,8 @@ export default function ConfigPage() {
     };
 
     fetchApiKey();
+    fetchUsageStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, router]);
 
   const validateApiKey = (key: string) => {
@@ -101,7 +122,7 @@ export default function ConfigPage() {
     } catch (error) {
       console.error("API key test failed:", error);
       setErrorMessage(
-        `Wrong API key. Please check your API key and try again.`
+        `Failed to validate API key: ${(error as Error).message}`
       );
       setTestStatus("error");
     }
@@ -271,7 +292,6 @@ export default function ConfigPage() {
             </div>
           </CardFooter>
         </Card>
-
         <div className="mt-8 bg-blue-50 rounded-lg p-4 text-sm text-blue-700">
           <div className="flex items-start">
             <div className="bg-blue-100 p-1 rounded-full mr-2 mt-0.5">
@@ -285,6 +305,152 @@ export default function ConfigPage() {
             </div>
           </div>
         </div>
+
+        {/* Usage Statistics Card */}
+        <Card className="shadow-lg border-0 mt-6">
+          <CardHeader className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
+            <CardTitle className="flex items-center">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="mr-2"
+              >
+                <path d="M12 20V10"></path>
+                <path d="M18 20V4"></path>
+                <path d="M6 20v-4"></path>
+              </svg>
+              Usage Statistics
+            </CardTitle>
+            <CardDescription className="text-white/80">
+              Track your AI service usage and associated costs
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-6">
+            {isLoadingStats ? (
+              <div className="flex justify-center items-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                <span className="ml-3 text-gray-600">
+                  Loading your usage statistics...
+                </span>
+              </div>
+            ) : usageStats ? (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium mb-3">
+                    Current Month Usage
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-blue-50 rounded-lg p-4">
+                      <div className="text-blue-600 font-medium">
+                        Transcription
+                      </div>
+                      <div className="mt-1 text-2xl font-bold">
+                        $
+                        {usageStats.currentMonthStats.transcriptionCost.toFixed(
+                          2
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        {usageStats.currentMonthStats.transcriptionMinutes.toFixed(
+                          1
+                        )}{" "}
+                        minutes processed
+                      </div>
+                    </div>
+                    <div className="bg-purple-50 rounded-lg p-4">
+                      <div className="text-purple-600 font-medium">
+                        Article Generation
+                      </div>
+                      <div className="mt-1 text-2xl font-bold">
+                        ${usageStats.currentMonthStats.articleCost.toFixed(2)}
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        {usageStats.currentMonthStats.articleCount} articles
+                        generated
+                      </div>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-4">
+                      <div className="text-green-600 font-medium">Total</div>
+                      <div className="mt-1 text-2xl font-bold">
+                        ${usageStats.currentMonthStats.totalCost.toFixed(2)}
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        This month&lsquo;s combined usage
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div>
+                  <h3 className="text-lg font-medium mb-3">All-Time Usage</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-blue-50 rounded-lg p-4">
+                      <div className="text-blue-600 font-medium">
+                        Transcription
+                      </div>
+                      <div className="mt-1 text-2xl font-bold">
+                        ${usageStats.totalStats.transcriptionCost.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="bg-purple-50 rounded-lg p-4">
+                      <div className="text-purple-600 font-medium">
+                        Article Generation
+                      </div>
+                      <div className="mt-1 text-2xl font-bold">
+                        ${usageStats.totalStats.articleCost.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-4">
+                      <div className="text-green-600 font-medium">Total</div>
+                      <div className="mt-1 text-2xl font-bold">
+                        ${usageStats.totalStats.totalCost.toFixed(2)}
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        Last updated:{" "}
+                        {usageStats.totalStats.lastUpdated
+                          ? new Date(
+                              usageStats.totalStats.lastUpdated.toDate()
+                            ).toLocaleString()
+                          : "Never"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 rounded-lg p-4 text-sm text-blue-700">
+                  <div className="flex items-start">
+                    <div className="bg-blue-100 p-1 rounded-full mr-2 mt-0.5">
+                      <AlertCircle className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <span className="font-medium">Note:</span> These costs are
+                      estimates based on standard pricing for AI services.
+                      Actual billing may vary based on your Hugging Face account
+                      plan and usage.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <div className="mb-2">No usage data available yet</div>
+                <div className="text-sm">
+                  Start using transcription and article generation to see your
+                  usage statistics
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

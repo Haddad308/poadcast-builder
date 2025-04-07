@@ -36,6 +36,10 @@ import { useAuth } from "@/firebase/auth-context";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { getApiKey } from "@/firebase/firestore";
+import {
+  trackTranscriptionUsage,
+  trackArticleGenerationUsage,
+} from "@/firebase/usage";
 
 const Page = () => {
   const { user } = useAuth();
@@ -220,12 +224,12 @@ const Page = () => {
 
       // Prepare the prompt for article generation
       const prompt = `
-        You are a professional content writer. Based on the following transcript, 
-        create a well-structured article with headings, subheadings, and paragraphs.
-        Make it engaging, informative, and easy to read. Add a compelling title at the top.
-        
-        Transcript: ${transcriptionText.substring(0, 4000)}
-      `;
+      You are a professional content writer. Based on the following transcript, 
+      create a well-structured article with headings, subheadings, and paragraphs.
+      Make it engaging, informative, and easy to read. Add a compelling title at the top.
+      
+      Transcript: ${transcriptionText.substring(0, 4000)}
+    `;
 
       // Make the API request to the Hugging Face Inference API
       const response = await fetch(
@@ -257,6 +261,9 @@ const Page = () => {
 
       const result = await response.json();
       setArticle(result[0].generated_text);
+
+      // Track article generation usage
+      await trackArticleGenerationUsage(user.uid);
     } catch (error) {
       console.error("Article generation error:", error);
       setError(`Article generation failed: ${(error as Error).message}`);
@@ -271,6 +278,7 @@ const Page = () => {
     try {
       setIsTranscribing(true);
       setTranscriptionProgress(0);
+      const startTranscriptionTime = Date.now();
 
       // Create a FormData object to send the audio file
       const formData = new FormData();
@@ -320,6 +328,11 @@ const Page = () => {
 
       const result = await response.json();
       setTranscription(result.text);
+
+      // Track transcription usage
+      const transcriptionDuration =
+        (Date.now() - startTranscriptionTime) / 1000;
+      await trackTranscriptionUsage(user.uid, transcriptionDuration);
 
       // Generate article if enabled
       if (enableArticleGeneration) {
@@ -495,8 +508,8 @@ const Page = () => {
               className="text-purple-600 border-purple-200 hover:bg-purple-50"
               onClick={() => router.push("/config")}
             >
-              <Settings className="h-4 w-4 mr-2" />
-              Configure API Key
+              <Settings className="h-4 w-4 " />
+              Configuration
             </Button>
           </div>
         </div>
