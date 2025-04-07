@@ -22,8 +22,8 @@ import {
   Copy,
   FileAudio,
   Sparkles,
-  Wand2,
   Settings,
+  FileEdit,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -53,14 +53,17 @@ const Page = () => {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [, setAudioBlob] = useState<Blob | null>(null);
   const [isConverting, setIsConverting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcription, setTranscription] = useState<string | null>(null);
   const [enableTranscription, setEnableTranscription] = useState(true);
+  const [enableArticleGeneration, setEnableArticleGeneration] = useState(false);
+  const [isGeneratingArticle, setIsGeneratingArticle] = useState(false);
+  const [article, setArticle] = useState<string | null>(null);
   const [transcriptionProgress, setTranscriptionProgress] = useState(0);
+  const [articleProgress, setArticleProgress] = useState(0);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [startTime, setStartTime] = useState<number | null>(null);
 
@@ -71,7 +74,7 @@ const Page = () => {
   useEffect(() => {
     let interval: NodeJS.Timeout;
 
-    if (isConverting || isTranscribing) {
+    if (isConverting || isTranscribing || isGeneratingArticle) {
       if (!startTime) {
         setStartTime(Date.now());
       }
@@ -89,7 +92,7 @@ const Page = () => {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isConverting, isTranscribing, startTime]);
+  }, [isConverting, isTranscribing, isGeneratingArticle, startTime]);
 
   // Format elapsed time
   const formatTime = (seconds: number): string => {
@@ -157,6 +160,7 @@ const Page = () => {
       setVideo(file);
       setAudioUrl(null);
       setTranscription(null);
+      setArticle(null);
       setError(null);
     } else {
       setError("Please drop a valid video file");
@@ -169,6 +173,7 @@ const Page = () => {
       setVideo(file);
       setAudioUrl(null);
       setTranscription(null);
+      setArticle(null);
       setError(null);
     }
   };
@@ -177,9 +182,87 @@ const Page = () => {
     abortControllerRef.current?.abort();
     setIsConverting(false);
     setIsTranscribing(false);
+    setIsGeneratingArticle(false);
     setStatus("Conversion cancelled");
     setProgress(0);
     setTranscriptionProgress(0);
+    setArticleProgress(0);
+  };
+
+  const generateArticle = async (transcriptionText: string) => {
+    if (!transcriptionText || !user) return;
+
+    try {
+      setIsGeneratingArticle(true);
+      setArticleProgress(0);
+
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setArticleProgress((prev) => {
+          const newProgress = prev + Math.random() * 5;
+          return newProgress > 95 ? 95 : newProgress;
+        });
+      }, 1000);
+
+      // Get API key from Firebase
+      let apiKey =
+        process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY || "hf_dummy_key";
+
+      try {
+        const savedApiKey = await getApiKey(user.uid);
+        if (savedApiKey) {
+          apiKey = savedApiKey;
+        }
+      } catch (error) {
+        console.error("Error fetching API key:", error);
+        // Continue with environment variable as fallback
+      }
+
+      // Prepare the prompt for article generation
+      const prompt = `
+        You are a professional content writer. Based on the following transcript, 
+        create a well-structured article with headings, subheadings, and paragraphs.
+        Make it engaging, informative, and easy to read. Add a compelling title at the top.
+        
+        Transcript: ${transcriptionText.substring(0, 4000)}
+      `;
+
+      // Make the API request to the Hugging Face Inference API
+      const response = await fetch(
+        "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            inputs: `<s>[INST] ${prompt} [/INST]`,
+            parameters: {
+              max_new_tokens: 2000,
+              temperature: 0.7,
+              top_p: 0.9,
+              do_sample: true,
+            },
+          }),
+        }
+      );
+
+      clearInterval(progressInterval);
+      setArticleProgress(100);
+
+      if (!response.ok) {
+        throw new Error(`Article generation failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      setArticle(result[0].generated_text);
+    } catch (error) {
+      console.error("Article generation error:", error);
+      setError(`Article generation failed: ${(error as Error).message}`);
+    } finally {
+      setIsGeneratingArticle(false);
+    }
   };
 
   const transcribeAudio = async (audioBlob: Blob) => {
@@ -237,6 +320,11 @@ const Page = () => {
 
       const result = await response.json();
       setTranscription(result.text);
+
+      // Generate article if enabled
+      if (enableArticleGeneration) {
+        await generateArticle(result.text);
+      }
     } catch (error) {
       console.error("Transcription error:", error);
       setError(`Transcription failed: ${(error as Error).message}`);
@@ -258,6 +346,7 @@ const Page = () => {
       setError(null);
       setAudioUrl(null);
       setTranscription(null);
+      setArticle(null);
 
       abortControllerRef.current = new AbortController();
       const ffmpeg = ffmpegRef.current;
@@ -281,7 +370,6 @@ const Page = () => {
       const audioBlob = new Blob([data], { type: "audio/mp3" });
       const audioUrl = URL.createObjectURL(audioBlob);
 
-      setAudioBlob(audioBlob);
       setAudioUrl(audioUrl);
       setStatus("Conversion complete");
 
@@ -327,9 +415,9 @@ const Page = () => {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    setStatus("Transcription copied to clipboard");
+    setStatus("Copied to clipboard");
     setTimeout(() => {
-      if (status === "Transcription copied to clipboard") {
+      if (status === "Copied to clipboard") {
         setStatus("");
       }
     }, 2000);
@@ -347,6 +435,18 @@ const Page = () => {
     document.body.removeChild(element);
   };
 
+  const downloadArticle = () => {
+    if (!article) return;
+
+    const element = document.createElement("a");
+    const file = new Blob([article], { type: "text/plain" });
+    element.href = URL.createObjectURL(file);
+    element.download = `${video?.name.replace(/\.[^/.]+$/, "")}_article.txt`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
   // Get file size in human-readable format
   const getFileSize = (file: File): string => {
     const size = file.size;
@@ -359,6 +459,7 @@ const Page = () => {
 
   // Get current stage for display
   const getCurrentStage = () => {
+    if (isGeneratingArticle) return "Generating Article";
     if (isTranscribing) return "Transcribing";
     if (isConverting) return "Converting";
     if (audioUrl) return "Complete";
@@ -368,7 +469,6 @@ const Page = () => {
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-12 max-w-5xl">
-        {/* Header Section */}
         {/* Header Section */}
         <div className="text-center mb-12">
           <div className="inline-block mb-4">
@@ -380,10 +480,10 @@ const Page = () => {
             </div>
           </div>
           <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 text-transparent bg-clip-text mb-4">
-            Video to audio & Transcript
+            Video to Podcast & Transcript
           </h1>
           <p className="text-gray-600 max-w-2xl mx-auto text-lg">
-            Transform your videos into professional audio episodes with full
+            Transform your videos into professional podcast episodes with full
             transcripts instantly. Perfect for content creators, educators, and
             businesses.
           </p>
@@ -439,14 +539,14 @@ const Page = () => {
                   </div>
                   <div className="flex items-start">
                     <div className="bg-white p-2 rounded-full shadow-sm mr-4">
-                      <Wand2 className="h-5 w-5 text-purple-500" />
+                      <FileEdit className="h-5 w-5 text-purple-500" />
                     </div>
                     <div>
                       <h4 className="font-medium text-purple-900">
-                        AI-Powered
+                        AI-Generated Articles
                       </h4>
                       <p className="text-sm text-gray-600">
-                        High-quality transcription with Whisper
+                        Turn your videos into blog posts automatically
                       </p>
                     </div>
                   </div>
@@ -518,7 +618,7 @@ const Page = () => {
                                   or drag and drop
                                 </p>
                                 <p className="text-xs text-gray-500">
-                                  Convert any video format into audio-ready
+                                  Convert any video format into podcast-ready
                                   audio with transcription
                                 </p>
                               </div>
@@ -565,24 +665,52 @@ const Page = () => {
                         </TabsContent>
                       </Tabs>
 
-                      <div className="mt-6 flex items-center space-x-2">
-                        <Switch
-                          id="transcription"
-                          checked={enableTranscription}
-                          onCheckedChange={setEnableTranscription}
-                        />
-                        <Label
-                          htmlFor="transcription"
-                          className="flex items-center gap-2"
-                        >
-                          <span>Enable Transcription</span>
-                          <Badge
-                            variant="outline"
-                            className="ml-2 text-xs text-purple-600 bg-purple-50 border-purple-200"
+                      <div className="mt-6 space-y-3">
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            id="transcription"
+                            checked={enableTranscription}
+                            onCheckedChange={(checked) => {
+                              setEnableTranscription(checked);
+                              if (!checked) {
+                                setEnableArticleGeneration(false);
+                              }
+                            }}
+                          />
+                          <Label
+                            htmlFor="transcription"
+                            className="flex items-center gap-2"
                           >
-                            Powered by Whisper
-                          </Badge>
-                        </Label>
+                            <span>Enable Transcription</span>
+                            <Badge
+                              variant="outline"
+                              className="ml-2 text-xs text-purple-600 bg-purple-50 border-purple-200"
+                            >
+                              Powered by Whisper
+                            </Badge>
+                          </Label>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            id="article"
+                            checked={enableArticleGeneration}
+                            onCheckedChange={setEnableArticleGeneration}
+                            disabled={!enableTranscription}
+                          />
+                          <Label
+                            htmlFor="article"
+                            className="flex items-center gap-2"
+                          >
+                            <span>Generate Article from Transcript</span>
+                            <Badge
+                              variant="outline"
+                              className="ml-2 text-xs text-purple-600 bg-purple-50 border-purple-200"
+                            >
+                              AI-Powered
+                            </Badge>
+                          </Label>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -646,7 +774,11 @@ const Page = () => {
                             size="sm"
                             onClick={() => setVideo(null)}
                             className="shrink-0 border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                            disabled={isConverting || isTranscribing}
+                            disabled={
+                              isConverting ||
+                              isTranscribing ||
+                              isGeneratingArticle
+                            }
                           >
                             <X className="w-4 h-4 mr-1" />
                             Remove
@@ -654,39 +786,58 @@ const Page = () => {
                         </div>
 
                         {/* Output preview */}
-                        {!isConverting && !isTranscribing && !audioUrl && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                            <div className="bg-purple-50 rounded-lg p-4 flex items-center">
-                              <div className="bg-white p-2 rounded-full shadow-sm mr-3">
-                                <FileAudio className="h-5 w-5 text-purple-500" />
-                              </div>
-                              <div>
-                                <h4 className="font-medium text-purple-900 text-sm">
-                                  MP3 audio
-                                </h4>
-                                <p className="text-xs text-gray-600">
-                                  High-quality audio format
-                                </p>
-                              </div>
-                            </div>
-
-                            {enableTranscription && (
+                        {!isConverting &&
+                          !isTranscribing &&
+                          !isGeneratingArticle &&
+                          !audioUrl && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                               <div className="bg-purple-50 rounded-lg p-4 flex items-center">
                                 <div className="bg-white p-2 rounded-full shadow-sm mr-3">
-                                  <FileText className="h-5 w-5 text-purple-500" />
+                                  <FileAudio className="h-5 w-5 text-purple-500" />
                                 </div>
                                 <div>
                                   <h4 className="font-medium text-purple-900 text-sm">
-                                    Transcript
+                                    MP3 Podcast
                                   </h4>
                                   <p className="text-xs text-gray-600">
-                                    SRT, TXT, and PDF formats
+                                    High-quality audio format
                                   </p>
                                 </div>
                               </div>
-                            )}
-                          </div>
-                        )}
+
+                              {enableTranscription && (
+                                <div className="bg-purple-50 rounded-lg p-4 flex items-center">
+                                  <div className="bg-white p-2 rounded-full shadow-sm mr-3">
+                                    <FileText className="h-5 w-5 text-purple-500" />
+                                  </div>
+                                  <div>
+                                    <h4 className="font-medium text-purple-900 text-sm">
+                                      Transcript
+                                    </h4>
+                                    <p className="text-xs text-gray-600">
+                                      Full text transcription
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {enableArticleGeneration && (
+                                <div className="bg-purple-50 rounded-lg p-4 flex items-center">
+                                  <div className="bg-white p-2 rounded-full shadow-sm mr-3">
+                                    <FileEdit className="h-5 w-5 text-purple-500" />
+                                  </div>
+                                  <div>
+                                    <h4 className="font-medium text-purple-900 text-sm">
+                                      Article
+                                    </h4>
+                                    <p className="text-xs text-gray-600">
+                                      AI-generated blog post
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
 
                         {/* Conversion progress */}
                         <AnimatePresence mode="wait">
@@ -772,6 +923,51 @@ const Page = () => {
                               </div>
                             </motion.div>
                           )}
+
+                          {isGeneratingArticle && (
+                            <motion.div
+                              key="generating-article"
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              className="mb-6"
+                            >
+                              <div className="flex justify-between items-center text-sm mb-2">
+                                <div className="flex items-center text-purple-700">
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  <span className="font-medium">
+                                    Generating article
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-500">
+                                    {formatTime(elapsedTime)}
+                                  </span>
+                                  <span className="font-medium text-purple-700">
+                                    {Math.round(articleProgress)}%
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="relative">
+                                <Progress
+                                  value={articleProgress}
+                                  className="h-2 bg-purple-100"
+                                />
+                                <div className="absolute -bottom-6 left-0 right-0">
+                                  <p className="text-xs text-center text-gray-500">
+                                    <span className="inline-flex items-center">
+                                      <span className="relative flex h-2 w-2 mr-2">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span>
+                                      </span>
+                                      Creating a well-structured article from
+                                      your transcript...
+                                    </span>
+                                  </p>
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
                         </AnimatePresence>
 
                         {/* Action buttons */}
@@ -780,9 +976,15 @@ const Page = () => {
                             onClick={convertToAudio}
                             className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-md hover:shadow-lg transition-all"
                             size="lg"
-                            disabled={isConverting || isTranscribing}
+                            disabled={
+                              isConverting ||
+                              isTranscribing ||
+                              isGeneratingArticle
+                            }
                           >
-                            {isConverting || isTranscribing ? (
+                            {isConverting ||
+                            isTranscribing ||
+                            isGeneratingArticle ? (
                               <>
                                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                                 Processing...
@@ -790,8 +992,9 @@ const Page = () => {
                             ) : (
                               <>
                                 <span className="mr-2">
-                                  Create audio Episode
+                                  Create Podcast Episode
                                   {enableTranscription ? " & Transcript" : ""}
+                                  {enableArticleGeneration ? " & Article" : ""}
                                 </span>
                                 <span className="bg-white/20 text-xs py-0.5 px-2 rounded-full">
                                   AI-Powered
@@ -800,7 +1003,9 @@ const Page = () => {
                             )}
                           </Button>
 
-                          {(isConverting || isTranscribing) && (
+                          {(isConverting ||
+                            isTranscribing ||
+                            isGeneratingArticle) && (
                             <Button
                               variant="outline"
                               className="w-full border-gray-200 hover:bg-gray-100 text-gray-700"
@@ -813,33 +1018,36 @@ const Page = () => {
                         </div>
 
                         {/* Tips */}
-                        {!isConverting && !isTranscribing && !audioUrl && (
-                          <div className="mt-6 bg-blue-50 rounded-lg p-3 text-xs text-blue-700 flex items-start">
-                            <div className="bg-blue-100 p-1 rounded-full mr-2 mt-0.5">
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="12"
-                                height="12"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <line x1="12" y1="16" x2="12" y2="12"></line>
-                                <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                              </svg>
+                        {!isConverting &&
+                          !isTranscribing &&
+                          !isGeneratingArticle &&
+                          !audioUrl && (
+                            <div className="mt-6 bg-blue-50 rounded-lg p-3 text-xs text-blue-700 flex items-start">
+                              <div className="bg-blue-100 p-1 rounded-full mr-2 mt-0.5">
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="12"
+                                  height="12"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <circle cx="12" cy="12" r="10"></circle>
+                                  <line x1="12" y1="16" x2="12" y2="12"></line>
+                                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                </svg>
+                              </div>
+                              <div>
+                                <span className="font-medium">Pro tip:</span>{" "}
+                                For best results, ensure your video has clear
+                                audio. The conversion process may take a few
+                                minutes depending on the file size.
+                              </div>
                             </div>
-                            <div>
-                              <span className="font-medium">Pro tip:</span> For
-                              best results, ensure your video has clear audio.
-                              The conversion process may take a few minutes
-                              depending on the file size.
-                            </div>
-                          </div>
-                        )}
+                          )}
                       </CardContent>
                     </Card>
                   </motion.div>
@@ -852,19 +1060,19 @@ const Page = () => {
                         Output Options
                       </h3>
                       <p className="text-sm text-gray-500">
-                        Customize your audio and transcript
+                        Customize your podcast and transcript
                       </p>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-purple-50 rounded-lg p-4 flex items-center">
                       <div className="bg-white p-2 rounded-full shadow-sm mr-3">
                         <FileAudio className="h-5 w-5 text-purple-500" />
                       </div>
                       <div>
                         <h4 className="font-medium text-purple-900 text-sm">
-                          MP3 audio
+                          MP3 Podcast
                         </h4>
                         <p className="text-xs text-gray-600">
                           High-quality audio format
@@ -880,7 +1088,20 @@ const Page = () => {
                           Transcript
                         </h4>
                         <p className="text-xs text-gray-600">
-                          SRT, TXT, and PDF formats
+                          Full text transcription
+                        </p>
+                      </div>
+                    </div>
+                    <div className="bg-purple-50 rounded-lg p-4 flex items-center">
+                      <div className="bg-white p-2 rounded-full shadow-sm mr-3">
+                        <FileEdit className="h-5 w-5 text-purple-500" />
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-purple-900 text-sm">
+                          Article
+                        </h4>
+                        <p className="text-xs text-gray-600">
+                          AI-generated blog post
                         </p>
                       </div>
                     </div>
@@ -933,8 +1154,11 @@ const Page = () => {
                 </AlertTitle>
                 <AlertDescription className="text-green-700/80 dark:text-green-300/80">
                   Your video has been successfully converted to audio
-                  {enableTranscription ? " and transcribed" : ""}. Your files
-                  are ready to download.
+                  {enableTranscription ? " and transcribed" : ""}
+                  {enableArticleGeneration && article
+                    ? " with an article generated"
+                    : ""}
+                  . Your files are ready to download.
                 </AlertDescription>
 
                 {/* Action buttons */}
@@ -947,7 +1171,7 @@ const Page = () => {
                         const link = document.createElement("a");
                         link.href = audioUrl;
                         link.download =
-                          video?.name.replace(/\.[^/.]+$/, "") + "_audio.mp3";
+                          video?.name.replace(/\.[^/.]+$/, "") + "_podcast.mp3";
                         document.body.appendChild(link);
                         link.click();
                         document.body.removeChild(link);
@@ -955,7 +1179,7 @@ const Page = () => {
                     }}
                   >
                     <Download className="h-3.5 w-3.5 mr-1.5" />
-                    Download
+                    Download Audio
                   </Button>
                 </div>
               </div>
@@ -980,11 +1204,13 @@ const Page = () => {
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 mb-4">
                 <CheckCircle className="h-5 w-5 text-green-500" />
-                <h3 className="font-semibold">Your audio Episode is Ready!</h3>
+                <h3 className="font-semibold">
+                  Your Podcast Episode is Ready!
+                </h3>
               </div>
               <p className="text-sm text-muted-foreground mb-4">
-                Preview your audio episode below. You can download it and share
-                it on any audio platform.
+                Preview your podcast episode below. You can download it and
+                share it on any podcast platform.
               </p>
               <audio controls className="w-full">
                 <source src={audioUrl} type="audio/mp3" />
@@ -997,14 +1223,14 @@ const Page = () => {
                   const link = document.createElement("a");
                   link.href = audioUrl;
                   link.download =
-                    video?.name.replace(/\.[^/.]+$/, "") + "_audio.mp3";
+                    video?.name.replace(/\.[^/.]+$/, "") + "_podcast.mp3";
                   document.body.appendChild(link);
                   link.click();
                   document.body.removeChild(link);
                 }}
               >
                 <Download className="h-4 w-4 mr-2" />
-                Download audio Episode
+                Download Podcast Episode
               </Button>
             </CardContent>
           </Card>
@@ -1012,7 +1238,7 @@ const Page = () => {
 
         {/* Transcript */}
         {transcription && (
-          <Card>
+          <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
@@ -1047,6 +1273,77 @@ const Page = () => {
                   readOnly
                   className="min-h-[200px] font-mono text-sm"
                 />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Article */}
+        {article && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <FileEdit className="h-5 w-5 text-purple-500" />
+                  <h3 className="font-semibold">Generated Article</h3>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1"
+                    onClick={() => copyToClipboard(article)}
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    <span>Copy</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1"
+                    onClick={downloadArticle}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Download</span>
+                  </Button>
+                </div>
+              </div>
+              <Separator className="my-2" />
+              <div className="mt-4 max-h-96 overflow-y-auto">
+                <div className="prose prose-sm max-w-none">
+                  {article.split("\n").map((paragraph, index) => {
+                    if (paragraph.startsWith("# ")) {
+                      return (
+                        <h1
+                          key={index}
+                          className="text-2xl font-bold mt-4 mb-2"
+                        >
+                          {paragraph.substring(2)}
+                        </h1>
+                      );
+                    } else if (paragraph.startsWith("## ")) {
+                      return (
+                        <h2 key={index} className="text-xl font-bold mt-4 mb-2">
+                          {paragraph.substring(3)}
+                        </h2>
+                      );
+                    } else if (paragraph.startsWith("### ")) {
+                      return (
+                        <h3 key={index} className="text-lg font-bold mt-3 mb-2">
+                          {paragraph.substring(4)}
+                        </h3>
+                      );
+                    } else if (paragraph.trim() === "") {
+                      return <br key={index} />;
+                    } else {
+                      return (
+                        <p key={index} className="mb-2">
+                          {paragraph}
+                        </p>
+                      );
+                    }
+                  })}
+                </div>
               </div>
             </CardContent>
           </Card>
