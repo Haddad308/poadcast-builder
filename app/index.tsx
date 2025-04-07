@@ -1311,38 +1311,47 @@ const Page = () => {
               <Separator className="my-2" />
               <div className="mt-4 max-h-96 overflow-y-auto">
                 <div className="prose prose-sm max-w-none">
-                  {article.split("\n").map((paragraph, index) => {
-                    if (paragraph.startsWith("# ")) {
-                      return (
-                        <h1
-                          key={index}
-                          className="text-2xl font-bold mt-4 mb-2"
-                        >
-                          {paragraph.substring(2)}
-                        </h1>
-                      );
-                    } else if (paragraph.startsWith("## ")) {
-                      return (
-                        <h2 key={index} className="text-xl font-bold mt-4 mb-2">
-                          {paragraph.substring(3)}
-                        </h2>
-                      );
-                    } else if (paragraph.startsWith("### ")) {
-                      return (
-                        <h3 key={index} className="text-lg font-bold mt-3 mb-2">
-                          {paragraph.substring(4)}
-                        </h3>
-                      );
-                    } else if (paragraph.trim() === "") {
-                      return <br key={index} />;
-                    } else {
-                      return (
-                        <p key={index} className="mb-2">
-                          {paragraph}
-                        </p>
-                      );
-                    }
-                  })}
+                  {article
+                    .split("[/INST]")[1]
+                    .split("\n")
+                    .map((paragraph, index) => {
+                      if (paragraph.startsWith("# ")) {
+                        return (
+                          <h1
+                            key={index}
+                            className="text-2xl font-bold mt-4 mb-2"
+                          >
+                            {paragraph.substring(2)}
+                          </h1>
+                        );
+                      } else if (paragraph.startsWith("## ")) {
+                        return (
+                          <h2
+                            key={index}
+                            className="text-xl font-bold mt-4 mb-2"
+                          >
+                            {paragraph.substring(3)}
+                          </h2>
+                        );
+                      } else if (paragraph.startsWith("### ")) {
+                        return (
+                          <h3
+                            key={index}
+                            className="text-lg font-bold mt-3 mb-2"
+                          >
+                            {paragraph.substring(4)}
+                          </h3>
+                        );
+                      } else if (paragraph.trim() === "") {
+                        return <br key={index} />;
+                      } else {
+                        return (
+                          <p key={index} className="mb-2">
+                            {paragraph}
+                          </p>
+                        );
+                      }
+                    })}
                 </div>
               </div>
             </CardContent>
