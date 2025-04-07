@@ -101,7 +101,7 @@ export default function ConfigPage() {
     } catch (error) {
       console.error("API key test failed:", error);
       setErrorMessage(
-        `Failed to validate API key: ${(error as Error).message}`
+        `Wrong API key. Please check your API key and try again.`
       );
       setTestStatus("error");
     }
@@ -264,7 +264,7 @@ export default function ConfigPage() {
               </div>
             )}
           </CardContent>
-          <CardFooter className="bg-gray-50 border-t border-gray-100 flex justify-between">
+          <CardFooter className="bg-gray-50 border-t border-gray-100 flex justify-center items-center p-2">
             <div className="text-sm text-gray-500 flex items-center">
               <Shield className="h-4 w-4 mr-2 text-purple-500" />
               Your API key is securely stored and encrypted in our database.
