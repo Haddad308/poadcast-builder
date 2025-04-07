@@ -23,6 +23,7 @@ import {
   FileAudio,
   Sparkles,
   Wand2,
+  Settings,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -34,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/firebase/auth-context";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { getApiKey } from "@/firebase/firestore";
 
 const Page = () => {
   const { user } = useAuth();
@@ -181,7 +183,7 @@ const Page = () => {
   };
 
   const transcribeAudio = async (audioBlob: Blob) => {
-    if (!audioBlob) return;
+    if (!audioBlob || !user) return;
 
     try {
       setIsTranscribing(true);
@@ -200,15 +202,27 @@ const Page = () => {
         });
       }, 1000);
 
+      // Get API key from Firebase
+      let apiKey =
+        process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY || "hf_dummy_key";
+
+      try {
+        const savedApiKey = await getApiKey(user.uid);
+        if (savedApiKey) {
+          apiKey = savedApiKey;
+        }
+      } catch (error) {
+        console.error("Error fetching API key:", error);
+        // Continue with environment variable as fallback
+      }
+
       // Make the API request to the Hugging Face Inference API
       const response = await fetch(
         "https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo",
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${
-              process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY || "hf_dummy_key"
-            }`,
+            Authorization: `Bearer ${apiKey}`,
           },
           body: formData,
         }
@@ -355,6 +369,7 @@ const Page = () => {
     <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-12 max-w-5xl">
         {/* Header Section */}
+        {/* Header Section */}
         <div className="text-center mb-12">
           <div className="inline-block mb-4">
             <div className="relative h-16 w-16 mx-auto">
@@ -372,6 +387,18 @@ const Page = () => {
             transcripts instantly. Perfect for content creators, educators, and
             businesses.
           </p>
+          {/* Add settings button */}
+          <div className="mt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-purple-600 border-purple-200 hover:bg-purple-50"
+              onClick={() => router.push("/config")}
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Configure API Key
+            </Button>
+          </div>
         </div>
 
         {/* Main Content */}
