@@ -174,7 +174,7 @@ export function VideoConversionCard({
                 </div>
                 <div>
                   <h4 className="font-medium text-purple-900 text-sm">
-                    MP3 Podcast
+                    MP3 Audio
                   </h4>
                   <p className="text-xs text-gray-600">
                     High-quality audio format
@@ -294,7 +294,7 @@ export function VideoConversionCard({
               ) : (
                 <>
                   <span className="mr-2">
-                    Create Podcast Episode
+                    Create Audio Episode
                     {enableTranscription ? " & Transcript" : ""}
                   </span>
                   <span className="bg-white/20 text-xs py-0.5 px-2 rounded-full">

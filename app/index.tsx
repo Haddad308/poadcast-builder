@@ -493,12 +493,11 @@ const Page = () => {
             </div>
           </div>
           <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 text-transparent bg-clip-text mb-4">
-            Video to Podcast & Transcript
+            Video to Audio & Transcript
           </h1>
           <p className="text-gray-600 max-w-2xl mx-auto text-lg">
-            Transform your videos into professional podcast episodes with full
-            transcripts instantly. Perfect for content creators, educators, and
-            businesses.
+            Transform your videos into professional audio with full transcripts
+            instantly. Perfect for content creators, educators, and businesses.
           </p>
           {/* Add settings button */}
           <div className="mt-4">
@@ -631,8 +630,8 @@ const Page = () => {
                                   or drag and drop
                                 </p>
                                 <p className="text-xs text-gray-500">
-                                  Convert any video format into podcast-ready
-                                  audio with transcription
+                                  Convert any video format into audio with
+                                  transcription
                                 </p>
                               </div>
                               <Input
@@ -810,7 +809,7 @@ const Page = () => {
                                 </div>
                                 <div>
                                   <h4 className="font-medium text-purple-900 text-sm">
-                                    MP3 Podcast
+                                    MP3 audio
                                   </h4>
                                   <p className="text-xs text-gray-600">
                                     High-quality audio format
@@ -1005,7 +1004,7 @@ const Page = () => {
                             ) : (
                               <>
                                 <span className="mr-2">
-                                  Create Podcast Episode
+                                  Create audio
                                   {enableTranscription ? " & Transcript" : ""}
                                   {enableArticleGeneration ? " & Article" : ""}
                                 </span>
@@ -1073,7 +1072,7 @@ const Page = () => {
                         Output Options
                       </h3>
                       <p className="text-sm text-gray-500">
-                        Customize your podcast and transcript
+                        Customize your audio and transcript
                       </p>
                     </div>
                   </div>
@@ -1085,7 +1084,7 @@ const Page = () => {
                       </div>
                       <div>
                         <h4 className="font-medium text-purple-900 text-sm">
-                          MP3 Podcast
+                          MP3 Audio
                         </h4>
                         <p className="text-xs text-gray-600">
                           High-quality audio format
@@ -1184,7 +1183,7 @@ const Page = () => {
                         const link = document.createElement("a");
                         link.href = audioUrl;
                         link.download =
-                          video?.name.replace(/\.[^/.]+$/, "") + "_podcast.mp3";
+                          video?.name.replace(/\.[^/.]+$/, "") + "_audio.mp3";
                         document.body.appendChild(link);
                         link.click();
                         document.body.removeChild(link);
@@ -1217,13 +1216,11 @@ const Page = () => {
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 mb-4">
                 <CheckCircle className="h-5 w-5 text-green-500" />
-                <h3 className="font-semibold">
-                  Your Podcast Episode is Ready!
-                </h3>
+                <h3 className="font-semibold">Your Audio Episode is Ready!</h3>
               </div>
               <p className="text-sm text-muted-foreground mb-4">
-                Preview your podcast episode below. You can download it and
-                share it on any podcast platform.
+                Preview your Audio episode below. You can download it and share
+                it on any Audio platform.
               </p>
               <audio controls className="w-full">
                 <source src={audioUrl} type="audio/mp3" />
@@ -1236,14 +1233,14 @@ const Page = () => {
                   const link = document.createElement("a");
                   link.href = audioUrl;
                   link.download =
-                    video?.name.replace(/\.[^/.]+$/, "") + "_podcast.mp3";
+                    video?.name.replace(/\.[^/.]+$/, "") + "_audio.mp3";
                   document.body.appendChild(link);
                   link.click();
                   document.body.removeChild(link);
                 }}
               >
                 <Download className="h-4 w-4 mr-2" />
-                Download Podcast Episode
+                Download Audio
               </Button>
             </CardContent>
           </Card>
