@@ -24,6 +24,7 @@ import {
   Sparkles,
   Settings,
   FileEdit,
+  CreditCard,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -40,6 +41,10 @@ import {
   trackTranscriptionUsage,
   trackArticleGenerationUsage,
 } from "@/firebase/usage";
+// Add these imports at the top with the other imports
+import { checkUsageLimits } from "@/firebase/subscription";
+// Add this import at the top with the other imports
+import { SubscriptionUsage } from "@/components/subscription-usage";
 
 const Page = () => {
   const { user } = useAuth();
@@ -57,6 +62,7 @@ const Page = () => {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [, setAudioBlob] = useState<Blob | null>(null);
   const [isConverting, setIsConverting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -193,89 +199,23 @@ const Page = () => {
     setArticleProgress(0);
   };
 
-  const generateArticle = async (transcriptionText: string) => {
-    if (!transcriptionText || !user) return;
-
-    try {
-      setIsGeneratingArticle(true);
-      setArticleProgress(0);
-
-      // Simulate progress updates
-      const progressInterval = setInterval(() => {
-        setArticleProgress((prev) => {
-          const newProgress = prev + Math.random() * 5;
-          return newProgress > 95 ? 95 : newProgress;
-        });
-      }, 1000);
-
-      // Get API key from Firebase
-      let apiKey =
-        process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY || "hf_dummy_key";
-
-      try {
-        const savedApiKey = await getApiKey(user.uid);
-        if (savedApiKey) {
-          apiKey = savedApiKey;
-        }
-      } catch (error) {
-        console.error("Error fetching API key:", error);
-        // Continue with environment variable as fallback
-      }
-
-      // Prepare the prompt for article generation
-      const prompt = `
-      You are a professional content writer. Based on the following transcript, 
-      create a well-structured article with headings, subheadings, and paragraphs.
-      Make it engaging, informative, and easy to read. Add a compelling title at the top.
-      
-      Transcript: ${transcriptionText.substring(0, 4000)}
-    `;
-
-      // Make the API request to the Hugging Face Inference API
-      const response = await fetch(
-        "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            inputs: `<s>[INST] ${prompt} [/INST]`,
-            parameters: {
-              max_new_tokens: 2000,
-              temperature: 0.7,
-              top_p: 0.9,
-              do_sample: true,
-            },
-          }),
-        }
-      );
-
-      clearInterval(progressInterval);
-      setArticleProgress(100);
-
-      if (!response.ok) {
-        throw new Error(`Article generation failed: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      setArticle(result[0].generated_text);
-
-      // Track article generation usage
-      await trackArticleGenerationUsage(user.uid);
-    } catch (error) {
-      console.error("Article generation error:", error);
-      setError(`Article generation failed: ${(error as Error).message}`);
-    } finally {
-      setIsGeneratingArticle(false);
-    }
-  };
+  // Update the transcribeAudio function to check subscription limits
+  // Find the transcribeAudio function and replace it with this:
 
   const transcribeAudio = async (audioBlob: Blob) => {
     if (!audioBlob || !user) return;
 
     try {
+      // Check subscription limits for transcription
+      const usageLimits = await checkUsageLimits(user.uid, "transcription");
+
+      if (usageLimits.hasReachedLimit) {
+        setError(
+          `You've reached your monthly transcription limit (${usageLimits.limit} minutes). Please upgrade your plan to continue.`
+        );
+        return;
+      }
+
       setIsTranscribing(true);
       setTranscriptionProgress(0);
       const startTranscriptionTime = Date.now();
@@ -346,6 +286,103 @@ const Page = () => {
     }
   };
 
+  // Update the generateArticle function to check subscription limits
+  // Find the generateArticle function and replace it with this:
+
+  const generateArticle = async (transcriptionText: string) => {
+    if (!transcriptionText || !user) return;
+
+    try {
+      // Check subscription limits for article generation
+      const usageLimits = await checkUsageLimits(user.uid, "article");
+
+      if (usageLimits.hasReachedLimit) {
+        setError(
+          `You've reached your monthly article generation limit (${usageLimits.limit} articles). Please upgrade your plan to continue.`
+        );
+        return;
+      }
+
+      setIsGeneratingArticle(true);
+      setArticleProgress(0);
+
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setArticleProgress((prev) => {
+          const newProgress = prev + Math.random() * 5;
+          return newProgress > 95 ? 95 : newProgress;
+        });
+      }, 1000);
+
+      // Get API key from Firebase
+      let apiKey =
+        process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY || "hf_dummy_key";
+
+      try {
+        const savedApiKey = await getApiKey(user.uid);
+        if (savedApiKey) {
+          apiKey = savedApiKey;
+        }
+      } catch (error) {
+        console.error("Error fetching API key:", error);
+        // Continue with environment variable as fallback
+      }
+
+      // Prepare the prompt for article generation
+      const prompt = `
+        You are a professional content writer. Based on the following transcript, 
+        create a well-structured article with headings, subheadings, and paragraphs.
+        Make it engaging, informative, and easy to read. Add a compelling title at the top.
+        
+        Transcript: ${transcriptionText.substring(0, 4000)}
+      `;
+
+      // Make the API request to the Hugging Face Inference API
+      const response = await fetch(
+        "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            inputs: `<s>[INST] ${prompt} [/INST]`,
+            parameters: {
+              max_new_tokens: 2000,
+              temperature: 0.7,
+              top_p: 0.9,
+              do_sample: true,
+            },
+          }),
+        }
+      );
+
+      clearInterval(progressInterval);
+      setArticleProgress(100);
+
+      if (!response.ok) {
+        throw new Error(`Article generation failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      // Extract the generated text after the prompt
+      const generatedText = result.generated_text || "";
+      // Remove the instruction part and keep only the response
+      const articleText =
+        generatedText.split("[/INST]").pop()?.trim() || generatedText;
+      setArticle(articleText);
+
+      // Track article generation usage
+      await trackArticleGenerationUsage(user.uid);
+    } catch (error) {
+      console.error("Article generation error:", error);
+      setError(`Article generation failed: ${(error as Error).message}`);
+    } finally {
+      setIsGeneratingArticle(false);
+    }
+  };
+
   const convertToAudio = async () => {
     if (!video) {
       setError("Please select a video file first.");
@@ -383,6 +420,7 @@ const Page = () => {
       const audioBlob = new Blob([data], { type: "audio/mp3" });
       const audioUrl = URL.createObjectURL(audioBlob);
 
+      setAudioBlob(audioBlob);
       setAudioUrl(audioUrl);
       setStatus("Conversion complete");
 
@@ -493,11 +531,12 @@ const Page = () => {
             </div>
           </div>
           <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 text-transparent bg-clip-text mb-4">
-            Video to Audio & Transcript
+            Video to Podcast & Transcript
           </h1>
           <p className="text-gray-600 max-w-2xl mx-auto text-lg">
-            Transform your videos into professional audio with full transcripts
-            instantly. Perfect for content creators, educators, and businesses.
+            Transform your videos into professional podcast episodes with full
+            transcripts instantly. Perfect for content creators, educators, and
+            businesses.
           </p>
           {/* Add settings button */}
           <div className="mt-4">
@@ -507,8 +546,17 @@ const Page = () => {
               className="text-purple-600 border-purple-200 hover:bg-purple-50"
               onClick={() => router.push("/config")}
             >
-              <Settings className="h-4 w-4 " />
-              Configuration
+              <Settings className="h-4 w-4 mr-2" />
+              Configure API Key
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-purple-600 border-purple-200 hover:bg-purple-50 ml-2"
+              onClick={() => router.push("/pricing")}
+            >
+              <CreditCard className="h-4 w-4 mr-2" />
+              Subscription Plans
             </Button>
           </div>
         </div>
@@ -581,6 +629,12 @@ const Page = () => {
                     )}
                   </div>
                 </div>
+
+                {user && (
+                  <div className="mt-6">
+                    <SubscriptionUsage userId={user.uid} />
+                  </div>
+                )}
               </div>
 
               {/* Upload Area */}
@@ -630,8 +684,8 @@ const Page = () => {
                                   or drag and drop
                                 </p>
                                 <p className="text-xs text-gray-500">
-                                  Convert any video format into audio with
-                                  transcription
+                                  Convert any video format into podcast-ready
+                                  audio with transcription
                                 </p>
                               </div>
                               <Input
@@ -809,7 +863,7 @@ const Page = () => {
                                 </div>
                                 <div>
                                   <h4 className="font-medium text-purple-900 text-sm">
-                                    MP3 audio
+                                    MP3 Podcast
                                   </h4>
                                   <p className="text-xs text-gray-600">
                                     High-quality audio format
@@ -1004,7 +1058,7 @@ const Page = () => {
                             ) : (
                               <>
                                 <span className="mr-2">
-                                  Create audio
+                                  Create Podcast Episode
                                   {enableTranscription ? " & Transcript" : ""}
                                   {enableArticleGeneration ? " & Article" : ""}
                                 </span>
@@ -1072,7 +1126,7 @@ const Page = () => {
                         Output Options
                       </h3>
                       <p className="text-sm text-gray-500">
-                        Customize your audio and transcript
+                        Customize your podcast and transcript
                       </p>
                     </div>
                   </div>
@@ -1084,7 +1138,7 @@ const Page = () => {
                       </div>
                       <div>
                         <h4 className="font-medium text-purple-900 text-sm">
-                          MP3 Audio
+                          MP3 Podcast
                         </h4>
                         <p className="text-xs text-gray-600">
                           High-quality audio format
@@ -1183,7 +1237,7 @@ const Page = () => {
                         const link = document.createElement("a");
                         link.href = audioUrl;
                         link.download =
-                          video?.name.replace(/\.[^/.]+$/, "") + "_audio.mp3";
+                          video?.name.replace(/\.[^/.]+$/, "") + "_podcast.mp3";
                         document.body.appendChild(link);
                         link.click();
                         document.body.removeChild(link);
@@ -1216,11 +1270,13 @@ const Page = () => {
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 mb-4">
                 <CheckCircle className="h-5 w-5 text-green-500" />
-                <h3 className="font-semibold">Your Audio Episode is Ready!</h3>
+                <h3 className="font-semibold">
+                  Your Podcast Episode is Ready!
+                </h3>
               </div>
               <p className="text-sm text-muted-foreground mb-4">
-                Preview your Audio episode below. You can download it and share
-                it on any Audio platform.
+                Preview your podcast episode below. You can download it and
+                share it on any podcast platform.
               </p>
               <audio controls className="w-full">
                 <source src={audioUrl} type="audio/mp3" />
@@ -1233,14 +1289,14 @@ const Page = () => {
                   const link = document.createElement("a");
                   link.href = audioUrl;
                   link.download =
-                    video?.name.replace(/\.[^/.]+$/, "") + "_audio.mp3";
+                    video?.name.replace(/\.[^/.]+$/, "") + "_podcast.mp3";
                   document.body.appendChild(link);
                   link.click();
                   document.body.removeChild(link);
                 }}
               >
                 <Download className="h-4 w-4 mr-2" />
-                Download Audio
+                Download Podcast Episode
               </Button>
             </CardContent>
           </Card>
@@ -1321,47 +1377,38 @@ const Page = () => {
               <Separator className="my-2" />
               <div className="mt-4 max-h-96 overflow-y-auto">
                 <div className="prose prose-sm max-w-none">
-                  {article
-                    .split("[/INST]")[1]
-                    .split("\n")
-                    .map((paragraph, index) => {
-                      if (paragraph.startsWith("# ")) {
-                        return (
-                          <h1
-                            key={index}
-                            className="text-2xl font-bold mt-4 mb-2"
-                          >
-                            {paragraph.substring(2)}
-                          </h1>
-                        );
-                      } else if (paragraph.startsWith("## ")) {
-                        return (
-                          <h2
-                            key={index}
-                            className="text-xl font-bold mt-4 mb-2"
-                          >
-                            {paragraph.substring(3)}
-                          </h2>
-                        );
-                      } else if (paragraph.startsWith("### ")) {
-                        return (
-                          <h3
-                            key={index}
-                            className="text-lg font-bold mt-3 mb-2"
-                          >
-                            {paragraph.substring(4)}
-                          </h3>
-                        );
-                      } else if (paragraph.trim() === "") {
-                        return <br key={index} />;
-                      } else {
-                        return (
-                          <p key={index} className="mb-2">
-                            {paragraph}
-                          </p>
-                        );
-                      }
-                    })}
+                  {article.split("\n").map((paragraph, index) => {
+                    if (paragraph.startsWith("# ")) {
+                      return (
+                        <h1
+                          key={index}
+                          className="text-2xl font-bold mt-4 mb-2"
+                        >
+                          {paragraph.substring(2)}
+                        </h1>
+                      );
+                    } else if (paragraph.startsWith("## ")) {
+                      return (
+                        <h2 key={index} className="text-xl font-bold mt-4 mb-2">
+                          {paragraph.substring(3)}
+                        </h2>
+                      );
+                    } else if (paragraph.startsWith("### ")) {
+                      return (
+                        <h3 key={index} className="text-lg font-bold mt-3 mb-2">
+                          {paragraph.substring(4)}
+                        </h3>
+                      );
+                    } else if (paragraph.trim() === "") {
+                      return <br key={index} />;
+                    } else {
+                      return (
+                        <p key={index} className="mb-2">
+                          {paragraph}
+                        </p>
+                      );
+                    }
+                  })}
                 </div>
               </div>
             </CardContent>
