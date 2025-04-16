@@ -11,8 +11,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { CheckCircle, ArrowLeft, CreditCard, Loader2 } from "lucide-react";
+import {
+  CheckCircle,
+  ArrowLeft,
+  CreditCard,
+  Loader2,
+  Sparkles,
+} from "lucide-react";
 import { useAuth } from "@/firebase/auth-context";
 import {
   getUserSubscription,
@@ -20,60 +25,28 @@ import {
 } from "@/firebase/subscription";
 import { PayPalButtons, PayPalScriptProvider } from "@paypal/react-paypal-js";
 
-// Define the subscription plans
-const plans = [
-  {
-    id: "basic",
-    name: "Basic",
-    price: 9.99,
-    features: [
-      "30 minutes of transcription per month",
-      "5 AI-generated articles per month",
-      "MP3 podcast conversion",
-      "Basic email support",
-    ],
-    popular: false,
-    color: "blue",
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    price: 19.99,
-    features: [
-      "120 minutes of transcription per month",
-      "20 AI-generated articles per month",
-      "MP3 podcast conversion",
-      "Priority email support",
-      "Download in multiple formats",
-    ],
-    popular: true,
-    color: "purple",
-  },
-  {
-    id: "premium",
-    name: "Premium",
-    price: 39.99,
-    features: [
-      "Unlimited transcription",
-      "Unlimited AI-generated articles",
-      "MP3 podcast conversion",
-      "Priority email support",
-      "Download in multiple formats",
-      "Custom branding options",
-      "API access",
-    ],
-    popular: false,
-    color: "pink",
-  },
-];
+// Define the lifetime plan
+const lifetimePlan = {
+  id: "lifetime",
+  name: "Lifetime Access",
+  price: 79,
+  features: [
+    "Unlimited transcription",
+    "Unlimited AI-generated articles",
+    "MP3 podcast conversion",
+    "Priority email support",
+    "Download in multiple formats",
+    "Custom branding options",
+    "API access",
+    "All future updates",
+    "No recurring fees",
+  ],
+};
 
 export default function PricingPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
-  const [currentSubscription, setCurrentSubscription] = useState<string | null>(
-    null
-  );
+  const [hasLifetimeAccess, setHasLifetimeAccess] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -90,7 +63,10 @@ export default function PricingPage() {
       try {
         setIsLoading(true);
         const subscription = await getUserSubscription(user.uid);
-        setCurrentSubscription(subscription?.planId || null);
+        setHasLifetimeAccess(
+          subscription?.planId === "lifetime" &&
+            subscription?.status === "active"
+        );
       } catch (error) {
         console.error("Error fetching subscription:", error);
       } finally {
@@ -101,42 +77,14 @@ export default function PricingPage() {
     fetchSubscription();
   }, [user, router]);
 
-  const handlePlanSelect = (planId: string) => {
-    setSelectedPlan(planId);
-  };
-
-  const createOrder = (
-    data: Record<string, unknown>,
-    actions: {
-      order: {
-        create: (data: {
-          purchase_units: Array<{
-            description: string;
-            amount: {
-              currency_code: string;
-              value: string;
-            };
-          }>;
-          application_context: {
-            shipping_preference:
-              | "NO_SHIPPING"
-              | "GET_FROM_FILE"
-              | "SET_PROVIDED_ADDRESS";
-          };
-        }) => Promise<string>;
-      };
-    }
-  ) => {
-    const plan = plans.find((p) => p.id === selectedPlan);
-    if (!plan) return Promise.reject("No plan selected");
-
+  const createOrder = (data, actions) => {
     return actions.order.create({
       purchase_units: [
         {
-          description: `${plan.name} Plan Subscription`,
+          description: "Lifetime Access to Video to Podcast & Transcript",
           amount: {
             currency_code: "USD",
-            value: plan.price.toString(),
+            value: lifetimePlan.price.toString(),
           },
         },
       ],
@@ -146,7 +94,7 @@ export default function PricingPage() {
     });
   };
 
-  const onApprove = async (data: any, actions: any) => {
+  const onApprove = async (data, actions) => {
     try {
       setIsProcessing(true);
       const details = await actions.order.capture();
@@ -154,18 +102,19 @@ export default function PricingPage() {
       if (details.status === "COMPLETED" && user) {
         // Update user's subscription in Firebase
         await updateUserSubscription(user.uid, {
-          planId: selectedPlan,
+          planId: "lifetime",
           orderId: details.id,
           status: "active",
           startDate: new Date().toISOString(),
-          // Set end date to 30 days from now
-          endDate: new Date(
-            Date.now() + 30 * 24 * 60 * 60 * 1000
-          ).toISOString(),
+          // No end date for lifetime access
+          endDate: null,
+          isLifetime: true,
         });
 
-        setCurrentSubscription(selectedPlan);
-        alert("Subscription successful! Thank you for your purchase.");
+        setHasLifetimeAccess(true);
+        alert(
+          "Payment successful! Thank you for your purchase. You now have lifetime access to all features."
+        );
       }
     } catch (error) {
       console.error("Payment error:", error);
@@ -173,31 +122,6 @@ export default function PricingPage() {
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  const getColorClass = (
-    colorName: string,
-    element: "bg" | "text" | "border"
-  ) => {
-    const colorMap: Record<string, Record<string, string>> = {
-      blue: {
-        bg: "bg-blue-500",
-        text: "text-blue-600",
-        border: "border-blue-200",
-      },
-      purple: {
-        bg: "bg-purple-500",
-        text: "text-purple-600",
-        border: "border-purple-200",
-      },
-      pink: {
-        bg: "bg-pink-500",
-        text: "text-pink-600",
-        border: "border-pink-200",
-      },
-    };
-
-    return colorMap[colorName]?.[element] || colorMap.blue[element];
   };
 
   return (
@@ -217,125 +141,90 @@ export default function PricingPage() {
             <CreditCard className="h-8 w-8 text-purple-600" />
           </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Choose Your Plan
+            Lifetime Access
           </h1>
           <p className="text-gray-600 max-w-2xl mx-auto">
-            Select the perfect plan for your needs. Upgrade or downgrade
-            anytime.
+            Get unlimited access to all features forever with a one-time
+            payment. No subscriptions, no recurring fees.
           </p>
         </div>
 
         {isLoading ? (
           <div className="flex justify-center items-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
-            <span className="ml-3 text-gray-600">
-              Loading subscription details...
-            </span>
+            <span className="ml-3 text-gray-600">Loading...</span>
+          </div>
+        ) : hasLifetimeAccess ? (
+          <div className="max-w-md mx-auto">
+            <Card className="border-0 shadow-lg bg-gradient-to-r from-green-50 to-emerald-50">
+              <CardHeader>
+                <CardTitle className="flex items-center text-green-800">
+                  <CheckCircle className="h-6 w-6 mr-2 text-green-600" />
+                  You Have Lifetime Access
+                </CardTitle>
+                <CardDescription className="text-green-700">
+                  Thank you for your purchase! You have unlimited access to all
+                  features.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-green-700">
+                  You can now enjoy unlimited transcription, article generation,
+                  and all premium features without any restrictions.
+                </p>
+                <Button
+                  className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => router.push("/")}
+                >
+                  Return to Dashboard
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-              {plans.map((plan) => (
-                <Card
-                  key={plan.id}
-                  className={`relative overflow-hidden transition-all ${
-                    selectedPlan === plan.id
-                      ? "border-2 " +
-                        getColorClass(plan.color, "border") +
-                        " shadow-lg transform -translate-y-1"
-                      : "border hover:shadow-md"
-                  } ${
-                    currentSubscription === plan.id
-                      ? "ring-2 ring-green-400"
-                      : ""
-                  }`}
-                >
-                  {plan.popular && (
-                    <div className="absolute top-0 right-0">
-                      <div
-                        className={`${getColorClass(
-                          plan.color,
-                          "bg"
-                        )} text-white py-1 px-4 text-xs font-bold uppercase transform rotate-45 translate-x-5 translate-y-1`}
-                      >
-                        Popular
+            <div className="max-w-2xl mx-auto mb-12">
+              <Card className="border-0 shadow-xl overflow-hidden">
+                <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-6 text-white">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-2xl font-bold">Lifetime Access</h2>
+                    <div className="bg-white/20 backdrop-blur-sm rounded-full px-4 py-1 text-sm font-bold">
+                      One-time Payment
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-baseline">
+                    <span className="text-5xl font-extrabold">
+                      ${lifetimePlan.price}
+                    </span>
+                    <span className="ml-2 text-xl text-white/70 line-through">
+                      $199
+                    </span>
+                    <span className="ml-2 text-white/90">60% off</span>
+                  </div>
+                </div>
+
+                <CardContent className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    {lifetimePlan.features.map((feature, index) => (
+                      <div key={index} className="flex items-start">
+                        <div className="bg-purple-100 p-1 rounded-full mr-2 mt-0.5">
+                          <CheckCircle className="h-4 w-4 text-purple-600" />
+                        </div>
+                        <span className="text-gray-700">{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="bg-amber-50 border border-amber-100 rounded-lg p-4 flex items-start">
+                      <Sparkles className="h-5 w-5 text-amber-500 mr-2 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-amber-800">
+                        <span className="font-medium">Limited time offer:</span>{" "}
+                        Get lifetime access at our lowest price ever. This offer
+                        won&ldquo;t last long!
                       </div>
                     </div>
-                  )}
 
-                  {currentSubscription === plan.id && (
-                    <div className="absolute top-4 left-4 bg-green-100 text-green-800 text-xs py-1 px-2 rounded-full flex items-center">
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      Current Plan
-                    </div>
-                  )}
-
-                  <CardHeader>
-                    <CardTitle className={getColorClass(plan.color, "text")}>
-                      {plan.name}
-                    </CardTitle>
-                    <CardDescription>
-                      <span className="text-2xl font-bold">${plan.price}</span>{" "}
-                      / month
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2 min-h-[240px]">
-                      {plan.features.map((feature, index) => (
-                        <li key={index} className="flex items-start">
-                          <CheckCircle className="h-5 w-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
-                          <span className="text-sm text-gray-600">
-                            {feature}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                  <CardFooter>
-                    {currentSubscription === plan.id ? (
-                      <Button
-                        className="w-full bg-green-600 hover:bg-green-700"
-                        disabled
-                      >
-                        Current Plan
-                      </Button>
-                    ) : (
-                      <Button
-                        className={`w-full ${getColorClass(
-                          plan.color,
-                          "bg"
-                        )} hover:opacity-90 text-white`}
-                        onClick={() => handlePlanSelect(plan.id)}
-                      >
-                        {selectedPlan === plan.id ? "Selected" : "Select Plan"}
-                      </Button>
-                    )}
-                  </CardFooter>
-                </Card>
-              ))}
-            </div>
-
-            {selectedPlan && (
-              <div className="max-w-md mx-auto">
-                <Card className="border-0 shadow-lg">
-                  <CardHeader>
-                    <CardTitle>Complete Your Subscription</CardTitle>
-                    <CardDescription>
-                      Youve selected the{" "}
-                      <Badge
-                        variant="outline"
-                        className={getColorClass(
-                          plans.find((p) => p.id === selectedPlan)?.color ||
-                            "blue",
-                          "text"
-                        )}
-                      >
-                        {plans.find((p) => p.id === selectedPlan)?.name}
-                      </Badge>{" "}
-                      plan
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
                     <PayPalScriptProvider
                       options={{
                         clientId: paypalClientId,
@@ -344,7 +233,7 @@ export default function PricingPage() {
                       }}
                     >
                       <PayPalButtons
-                        style={{ layout: "vertical" }}
+                        style={{ layout: "vertical", color: "blue" }}
                         createOrder={createOrder}
                         onApprove={onApprove}
                         disabled={isProcessing}
@@ -359,37 +248,93 @@ export default function PricingPage() {
                         </span>
                       </div>
                     )}
+                  </div>
+                </CardContent>
+
+                <CardFooter className="bg-gray-50 px-6 py-4 border-t border-gray-100">
+                  <div className="text-sm text-gray-500 flex items-center">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="mr-2"
+                    >
+                      <rect
+                        x="3"
+                        y="11"
+                        width="18"
+                        height="11"
+                        rx="2"
+                        ry="2"
+                      ></rect>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    Secure payment via PayPal. 30-day money-back guarantee.
+                  </div>
+                </CardFooter>
+              </Card>
+            </div>
+
+            <div className="max-w-3xl mx-auto">
+              <h3 className="text-xl font-semibold text-center mb-6">
+                Frequently Asked Questions
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">
+                      What does &ldquo;lifetime access&ldquo; mean?
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm text-gray-600">
+                    Lifetime access means you pay once and get unlimited access
+                    to all features forever. No monthly subscriptions or
+                    recurring fees.
                   </CardContent>
                 </Card>
-              </div>
-            )}
 
-            <div className="mt-12 bg-blue-50 rounded-lg p-4 text-sm text-blue-700 max-w-3xl mx-auto">
-              <div className="flex items-start">
-                <div className="bg-blue-100 p-1 rounded-full mr-2 mt-0.5">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="16" x2="12" y2="12"></line>
-                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                  </svg>
-                </div>
-                <div>
-                  <span className="font-medium">Secure Payments:</span> All
-                  transactions are processed securely through PayPal. We do not
-                  store your payment information. Subscriptions are billed
-                  monthly and can be canceled anytime from your account
-                  settings.
-                </div>
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">
+                      Do I get access to future updates?
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm text-gray-600">
+                    Yes! Your lifetime purchase includes all future updates and
+                    new features we add to the platform.
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">
+                      Is there a usage limit?
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm text-gray-600">
+                    No, with lifetime access you get unlimited transcription
+                    minutes and article generation. Use the service as much as
+                    you need.
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">
+                      What if I&ldquo;m not satisfied?
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm text-gray-600">
+                    We offer a 30-day money-back guarantee. If you&ldquo;re not
+                    happy with the service, just contact us for a full refund.
+                  </CardContent>
+                </Card>
               </div>
             </div>
           </>
