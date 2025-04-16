@@ -6,8 +6,10 @@ import { useState } from "react";
 
 const useArticleGenerator = ({
   setError,
+  video,
 }: {
   setError: (error: string) => void;
+  video: File | null;
 }) => {
   const { user } = useAuth();
 
@@ -109,6 +111,18 @@ const useArticleGenerator = ({
     }
   };
 
+  const downloadArticle = () => {
+    if (!article) return;
+
+    const element = document.createElement("a");
+    const file = new Blob([article], { type: "text/plain" });
+    element.href = URL.createObjectURL(file);
+    element.download = `${video?.name.replace(/\.[^/.]+$/, "")}_article.txt`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
   return {
     generateArticle,
     article,
@@ -117,6 +131,7 @@ const useArticleGenerator = ({
     setArticleProgress,
     isGeneratingArticle,
     setIsGeneratingArticle,
+    downloadArticle,
   };
 };
 export default useArticleGenerator;

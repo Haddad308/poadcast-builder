@@ -2,9 +2,7 @@
 
 import type React from "react";
 
-import { useEffect, useState, useRef } from "react";
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile, toBlobURL } from "@ffmpeg/util";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -30,8 +28,6 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { useAuth } from "@/firebase/auth-context";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatTime, getFileSize } from "@/lib/helper";
 import Features from "@/components/Features";
@@ -39,110 +35,79 @@ import Header from "@/components/Header";
 import useElapsedTime from "@/hooks/useElapsedTime";
 import useTranscription from "@/hooks/useTranscription";
 import useArticleGenerator from "@/hooks/useArticleGenerator";
+import useVideoConverter from "@/hooks/useVideoConverter";
 
 const Page = () => {
-  const { user } = useAuth();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!user) {
-      router.push("/signin");
-    }
-  }, [user, router]);
-
-  const [videoUrl, setVideoUrl] = useState<string>("");
-  const [video, setVideo] = useState<File | null>(null);
-  const [status, setStatus] = useState<string>("");
+  // Page States
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<number>(0);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [, setAudioBlob] = useState<Blob | null>(null);
-  const [isConverting, setIsConverting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-
+  const [status, setStatus] = useState<string>("");
   const [enableTranscription, setEnableTranscription] = useState(true);
   const [enableArticleGeneration, setEnableArticleGeneration] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Video Converter hook
+  const {
+    convertToAudio,
+    videoUrl,
+    setVideoUrl,
+    video,
+    setVideo,
+    audioUrl,
+    progress,
+    isConverting,
+    setAudioUrl,
+    setIsConverting,
+    setProgress,
+  } = useVideoConverter({
+    setStatus,
+    setError,
+    enableTranscription,
+    enableArticleGeneration,
+    abortControllerRef,
+  });
+
+  // Article Generator hook
   const {
     article,
     setArticle,
     articleProgress,
     setArticleProgress,
     isGeneratingArticle,
+    downloadArticle,
     setIsGeneratingArticle,
-  } = useArticleGenerator({ setError });
+  } = useArticleGenerator({ setError, video });
 
+  // Transcription hook
   const {
     isTranscribing,
     setIsTranscribing,
     setTranscription,
-    transcribeAudio,
     transcription,
     transcriptionProgress,
     setTranscriptionProgress,
+    downloadTranscription,
   } = useTranscription({
     setError,
+    videoName: video,
     enableArticleGeneration,
   });
 
-  const ffmpegRef = useRef<FFmpeg>(new FFmpeg());
-  const abortControllerRef = useRef<AbortController | null>(null);
-
+  // Elapsed time hook
   const { elapsedTime } = useElapsedTime(
     isConverting || isTranscribing || isGeneratingArticle
   );
 
-  useEffect(() => {
-    loadFFmpeg();
-    return () => {
-      abortControllerRef.current?.abort();
-    };
-  }, []);
-
-  const loadFFmpeg = async () => {
-    try {
-      setStatus("Loading converter...");
-      setError(null);
-
-      const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
-      const ffmpeg = ffmpegRef.current;
-
-      ffmpeg.on("log", ({ message }) => {
-        console.log(message);
-      });
-
-      ffmpeg.on("progress", ({ progress }) => {
-        setProgress(Math.round(progress * 100));
-      });
-
-      await ffmpeg.load({
-        coreURL: await toBlobURL(
-          `${baseURL}/ffmpeg-core.js`,
-          "text/javascript"
-        ),
-        wasmURL: await toBlobURL(
-          `${baseURL}/ffmpeg-core.wasm`,
-          "application/wasm"
-        ),
-      });
-
-      setStatus("");
-    } catch (error) {
-      setError((error as Error).message);
-    }
-  };
-
+  // File upload and drag-and-drop handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
   };
-
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
   };
-
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -158,7 +123,6 @@ const Page = () => {
       setError("Please drop a valid video file");
     }
   };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -170,6 +134,7 @@ const Page = () => {
     }
   };
 
+  // For canceling the conversion process
   const cancelConversion = () => {
     abortControllerRef.current?.abort();
     setIsConverting(false);
@@ -181,60 +146,7 @@ const Page = () => {
     setArticleProgress(0);
   };
 
-  const convertToAudio = async () => {
-    if (!video) {
-      setError("Please select a video file first.");
-      return;
-    }
-
-    try {
-      setIsConverting(true);
-      setStatus("Converting...");
-      setProgress(0);
-      setError(null);
-      setAudioUrl(null);
-      setTranscription(null);
-      setArticle(null);
-
-      abortControllerRef.current = new AbortController();
-      const ffmpeg = ffmpegRef.current;
-
-      const inputFileName =
-        "input_video" + video.name.substring(video.name.lastIndexOf("."));
-      const outputFileName = "output_audio.mp3";
-
-      await ffmpeg.writeFile(inputFileName, await fetchFile(video));
-      await ffmpeg.exec([
-        "-i",
-        inputFileName,
-        "-q:a",
-        "0",
-        "-map",
-        "a",
-        outputFileName,
-      ]);
-
-      const data = await ffmpeg.readFile(outputFileName);
-      const audioBlob = new Blob([data], { type: "audio/mp3" });
-      const audioUrl = URL.createObjectURL(audioBlob);
-
-      setAudioBlob(audioBlob);
-      setAudioUrl(audioUrl);
-      setStatus("Conversion complete");
-
-      // Start transcription if enabled
-      if (enableTranscription) {
-        await transcribeAudio(audioBlob);
-      }
-    } catch (error) {
-      if ((error as Error).message !== "AbortError") {
-        setError((error as Error).message);
-      }
-    } finally {
-      setIsConverting(false);
-    }
-  };
-
+  // Download video from Google Drive
   const downloadPrivateDriveVideo = async (apiKey: string) => {
     const match = videoUrl.match(/\/d\/([^/]+)\//);
     if (!match) {
@@ -262,6 +174,7 @@ const Page = () => {
     }
   };
 
+  // copy text to clipboard
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setStatus("Copied to clipboard");
@@ -270,30 +183,6 @@ const Page = () => {
         setStatus("");
       }
     }, 2000);
-  };
-
-  const downloadTranscription = () => {
-    if (!transcription) return;
-
-    const element = document.createElement("a");
-    const file = new Blob([transcription], { type: "text/plain" });
-    element.href = URL.createObjectURL(file);
-    element.download = `${video?.name.replace(/\.[^/.]+$/, "")}_transcript.txt`;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-  };
-
-  const downloadArticle = () => {
-    if (!article) return;
-
-    const element = document.createElement("a");
-    const file = new Blob([article], { type: "text/plain" });
-    element.href = URL.createObjectURL(file);
-    element.download = `${video?.name.replace(/\.[^/.]+$/, "")}_article.txt`;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
   };
 
   // Get current stage for display

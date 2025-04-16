@@ -6,9 +6,11 @@ import { useState } from "react";
 
 const useTranscription = ({
   setError,
+  videoName,
   enableArticleGeneration,
 }: {
   setError: (error: string) => void;
+  videoName: File | null;
   enableArticleGeneration: boolean;
 }) => {
   const [transcription, setTranscription] = useState<string | null>(null);
@@ -100,6 +102,21 @@ const useTranscription = ({
     }
   };
 
+  const downloadTranscription = () => {
+    if (!transcription) return;
+
+    const element = document.createElement("a");
+    const file = new Blob([transcription], { type: "text/plain" });
+    element.href = URL.createObjectURL(file);
+    element.download = `${videoName?.name.replace(
+      /\.[^/.]+$/,
+      ""
+    )}_transcript.txt`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
   return {
     transcribeAudio,
     transcription,
@@ -108,6 +125,7 @@ const useTranscription = ({
     setIsTranscribing,
     transcriptionProgress,
     setTranscriptionProgress,
+    downloadTranscription,
   };
 };
 export default useTranscription;
