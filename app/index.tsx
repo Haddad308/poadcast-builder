@@ -44,6 +44,7 @@ import { checkUsageLimits } from "@/firebase/subscription";
 import { formatTime, getFileSize } from "@/lib/helper";
 import Features from "@/components/Features";
 import Header from "@/components/Header";
+import useElapsedTime from "@/hooks/useElapsedTime";
 
 const Page = () => {
   const { user } = useAuth();
@@ -73,35 +74,13 @@ const Page = () => {
   const [article, setArticle] = useState<string | null>(null);
   const [transcriptionProgress, setTranscriptionProgress] = useState(0);
   const [articleProgress, setArticleProgress] = useState(0);
-  const [elapsedTime, setElapsedTime] = useState<number>(0);
-  const [startTime, setStartTime] = useState<number | null>(null);
 
   const ffmpegRef = useRef<FFmpeg>(new FFmpeg());
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Track elapsed time during conversion
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-
-    if (isConverting || isTranscribing || isGeneratingArticle) {
-      if (!startTime) {
-        setStartTime(Date.now());
-      }
-
-      interval = setInterval(() => {
-        if (startTime) {
-          setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
-        }
-      }, 1000);
-    } else {
-      setStartTime(null);
-      setElapsedTime(0);
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isConverting, isTranscribing, isGeneratingArticle, startTime]);
+  const { elapsedTime } = useElapsedTime(
+    isConverting || isTranscribing || isGeneratingArticle
+  );
 
   useEffect(() => {
     loadFFmpeg();
