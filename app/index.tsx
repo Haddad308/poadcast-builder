@@ -29,13 +29,17 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
+import { getApiKey } from "@/firebase/firestore";
+import {
+  trackTranscriptionUsage,
+  trackArticleGenerationUsage,
+} from "@/firebase/usage";
+// Add these imports at the top with the other imports
+import { checkUsageLimits } from "@/firebase/subscription";
+// Add this import at the top with the other imports
 import { formatTime, getFileSize } from "@/lib/helper";
 import Features from "@/components/Features";
 import Header from "@/components/Header";
-import useElapsedTime from "@/hooks/useElapsedTime";
-import useTranscription from "@/hooks/useTranscription";
-import useArticleGenerator from "@/hooks/useArticleGenerator";
-import useVideoConverter from "@/hooks/useVideoConverter";
 
 const Page = () => {
   // Page States
@@ -47,59 +51,70 @@ const Page = () => {
   const [enableArticleGeneration, setEnableArticleGeneration] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Video Converter hook
-  const {
-    convertToAudio,
-    videoUrl,
-    setVideoUrl,
-    video,
-    setVideo,
-    audioUrl,
-    progress,
-    isConverting,
-    setAudioUrl,
-    setIsConverting,
-    setProgress,
-  } = useVideoConverter({
-    setStatus,
-    setError,
-    enableTranscription,
-    enableArticleGeneration,
-    abortControllerRef,
-  });
+  // Track elapsed time during conversion
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
 
-  // Article Generator hook
-  const {
-    article,
-    setArticle,
-    articleProgress,
-    setArticleProgress,
-    isGeneratingArticle,
-    downloadArticle,
-    setIsGeneratingArticle,
-  } = useArticleGenerator({ setError, video });
+    if (isConverting || isTranscribing || isGeneratingArticle) {
+      if (!startTime) {
+        setStartTime(Date.now());
+      }
 
-  // Transcription hook
-  const {
-    isTranscribing,
-    setIsTranscribing,
-    setTranscription,
-    transcription,
-    transcriptionProgress,
-    setTranscriptionProgress,
-    downloadTranscription,
-  } = useTranscription({
-    setError,
-    videoName: video,
-    enableArticleGeneration,
-  });
+      interval = setInterval(() => {
+        if (startTime) {
+          setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+        }
+      }, 1000);
+    } else {
+      setStartTime(null);
+      setElapsedTime(0);
+    }
 
-  // Elapsed time hook
-  const { elapsedTime } = useElapsedTime(
-    isConverting || isTranscribing || isGeneratingArticle
-  );
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isConverting, isTranscribing, isGeneratingArticle, startTime]);
 
-  // File upload and drag-and-drop handlers
+  useEffect(() => {
+    loadFFmpeg();
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
+  const loadFFmpeg = async () => {
+    try {
+      setStatus("Loading converter...");
+      setError(null);
+
+      const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
+      const ffmpeg = ffmpegRef.current;
+
+      ffmpeg.on("log", ({ message }) => {
+        console.log(message);
+      });
+
+      ffmpeg.on("progress", ({ progress }) => {
+        setProgress(Math.round(progress * 100));
+      });
+
+      await ffmpeg.load({
+        coreURL: await toBlobURL(
+          `${baseURL}/ffmpeg-core.js`,
+          "text/javascript"
+        ),
+        wasmURL: await toBlobURL(
+          `${baseURL}/ffmpeg-core.wasm`,
+          "application/wasm"
+        ),
+      });
+
+      setStatus("");
+    } catch (error) {
+      setError((error as Error).message);
+    }
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -146,7 +161,238 @@ const Page = () => {
     setArticleProgress(0);
   };
 
-  // Download video from Google Drive
+  const transcribeAudio = async (audioBlob: Blob) => {
+    if (!audioBlob || !user) return;
+
+    try {
+      // Check subscription limits for transcription
+      const usageLimits = await checkUsageLimits(user.uid, "transcription");
+
+      if (usageLimits.hasReachedLimit) {
+        setError(
+          `You've reached your monthly transcription limit (${usageLimits.limit} minutes). Please upgrade your plan to continue.`
+        );
+        return;
+      }
+
+      setIsTranscribing(true);
+      setTranscriptionProgress(0);
+      const startTranscriptionTime = Date.now();
+
+      // Create a FormData object to send the audio file
+      const formData = new FormData();
+      formData.append("file", audioBlob, "audio.mp3");
+      formData.append("model", "openai/whisper-large-v3-turbo");
+
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setTranscriptionProgress((prev) => {
+          const newProgress = prev + Math.random() * 5;
+          return newProgress > 95 ? 95 : newProgress;
+        });
+      }, 1000);
+
+      // Get API key from Firebase
+      let apiKey =
+        process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY || "hf_dummy_key";
+
+      try {
+        const savedApiKey = await getApiKey(user.uid);
+        if (savedApiKey) {
+          apiKey = savedApiKey;
+        }
+      } catch (error) {
+        console.error("Error fetching API key:", error);
+        // Continue with environment variable as fallback
+      }
+
+      // Make the API request to the Hugging Face Inference API
+      const response = await fetch(
+        "https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: formData,
+        }
+      );
+
+      clearInterval(progressInterval);
+      setTranscriptionProgress(100);
+
+      if (!response.ok) {
+        throw new Error(`Transcription failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      setTranscription(result.text);
+
+      // Track transcription usage
+      const transcriptionDuration =
+        (Date.now() - startTranscriptionTime) / 1000;
+      await trackTranscriptionUsage(user.uid, transcriptionDuration);
+
+      // Generate article if enabled
+      if (enableArticleGeneration) {
+        await generateArticle(result.text);
+      }
+    } catch (error) {
+      console.error("Transcription error:", error);
+      setError(`Transcription failed: ${(error as Error).message}`);
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const generateArticle = async (transcriptionText: string) => {
+    if (!transcriptionText || !user) return;
+
+    try {
+      // Check subscription limits for article generation
+      const usageLimits = await checkUsageLimits(user.uid, "article");
+
+      if (usageLimits.hasReachedLimit) {
+        setError(
+          `You've reached your monthly article generation limit (${usageLimits.limit} articles). Please upgrade your plan to continue.`
+        );
+        return;
+      }
+
+      setIsGeneratingArticle(true);
+      setArticleProgress(0);
+
+      // Simulate progress updates
+      const progressInterval = setInterval(() => {
+        setArticleProgress((prev) => {
+          const newProgress = prev + Math.random() * 5;
+          return newProgress > 95 ? 95 : newProgress;
+        });
+      }, 1000);
+
+      // Get API key from Firebase
+      let apiKey =
+        process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY || "hf_dummy_key";
+
+      try {
+        const savedApiKey = await getApiKey(user.uid);
+        if (savedApiKey) {
+          apiKey = savedApiKey;
+        }
+      } catch (error) {
+        console.error("Error fetching API key:", error);
+        // Continue with environment variable as fallback
+      }
+
+      // Prepare the prompt for article generation
+      const prompt = `
+        You are a professional content writer. Based on the following transcript, 
+        create a well-structured article with headings, subheadings, and paragraphs.
+        Make it engaging, informative, and easy to read. Add a compelling title at the top.
+        
+        Transcript: ${transcriptionText.substring(0, 4000)}
+      `;
+
+      // Make the API request to the Hugging Face Inference API
+      const response = await fetch(
+        "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            inputs: `<s>[INST] ${prompt} [/INST]`,
+            parameters: {
+              max_new_tokens: 2000,
+              temperature: 0.7,
+              top_p: 0.9,
+              do_sample: true,
+            },
+          }),
+        }
+      );
+
+      clearInterval(progressInterval);
+      setArticleProgress(100);
+
+      if (!response.ok) {
+        throw new Error(`Article generation failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      // Extract the generated text after the prompt
+      const generatedText = result.generated_text || "";
+      // Remove the instruction part and keep only the response
+      const articleText =
+        generatedText.split("[/INST]").pop()?.trim() || generatedText;
+      setArticle(articleText);
+
+      // Track article generation usage
+      await trackArticleGenerationUsage(user.uid);
+    } catch (error) {
+      console.error("Article generation error:", error);
+      setError(`Article generation failed: ${(error as Error).message}`);
+    } finally {
+      setIsGeneratingArticle(false);
+    }
+  };
+
+  const convertToAudio = async () => {
+    if (!video) {
+      setError("Please select a video file first.");
+      return;
+    }
+
+    try {
+      setIsConverting(true);
+      setStatus("Converting...");
+      setProgress(0);
+      setError(null);
+      setAudioUrl(null);
+      setTranscription(null);
+      setArticle(null);
+
+      abortControllerRef.current = new AbortController();
+      const ffmpeg = ffmpegRef.current;
+
+      const inputFileName =
+        "input_video" + video.name.substring(video.name.lastIndexOf("."));
+      const outputFileName = "output_audio.mp3";
+
+      await ffmpeg.writeFile(inputFileName, await fetchFile(video));
+      await ffmpeg.exec([
+        "-i",
+        inputFileName,
+        "-q:a",
+        "0",
+        "-map",
+        "a",
+        outputFileName,
+      ]);
+
+      const data = await ffmpeg.readFile(outputFileName);
+      const audioBlob = new Blob([data], { type: "audio/mp3" });
+      const audioUrl = URL.createObjectURL(audioBlob);
+
+      setAudioBlob(audioBlob);
+      setAudioUrl(audioUrl);
+      setStatus("Conversion complete");
+
+      // Start transcription if enabled
+      if (enableTranscription) {
+        await transcribeAudio(audioBlob);
+      }
+    } catch (error) {
+      if ((error as Error).message !== "AbortError") {
+        setError((error as Error).message);
+      }
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
   const downloadPrivateDriveVideo = async (apiKey: string) => {
     const match = videoUrl.match(/\/d\/([^/]+)\//);
     if (!match) {
@@ -183,6 +429,30 @@ const Page = () => {
         setStatus("");
       }
     }, 2000);
+  };
+
+  const downloadTranscription = () => {
+    if (!transcription) return;
+
+    const element = document.createElement("a");
+    const file = new Blob([transcription], { type: "text/plain" });
+    element.href = URL.createObjectURL(file);
+    element.download = `${video?.name.replace(/\.[^/.]+$/, "")}_transcript.txt`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
+  const downloadArticle = () => {
+    if (!article) return;
+
+    const element = document.createElement("a");
+    const file = new Blob([article], { type: "text/plain" });
+    element.href = URL.createObjectURL(file);
+    element.download = `${video?.name.replace(/\.[^/.]+$/, "")}_article.txt`;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
   };
 
   // Get current stage for display
