@@ -29,6 +29,7 @@ export default function RootLayout({
         <link rel="icon" href="/logo.webp" sizes="any" />
       </head>
       <body
+        suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <FirebaseProvider>{children}</FirebaseProvider>

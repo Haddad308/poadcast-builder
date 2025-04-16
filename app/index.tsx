@@ -21,10 +21,7 @@ import {
   Download,
   Copy,
   FileAudio,
-  Sparkles,
-  Settings,
   FileEdit,
-  CreditCard,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -44,7 +41,9 @@ import {
 // Add these imports at the top with the other imports
 import { checkUsageLimits } from "@/firebase/subscription";
 // Add this import at the top with the other imports
-import { SubscriptionUsage } from "@/components/subscription-usage";
+import { formatTime, getFileSize } from "@/lib/helper";
+import Features from "@/components/Features";
+import Header from "@/components/Header";
 
 const Page = () => {
   const { user } = useAuth();
@@ -103,13 +102,6 @@ const Page = () => {
       if (interval) clearInterval(interval);
     };
   }, [isConverting, isTranscribing, isGeneratingArticle, startTime]);
-
-  // Format elapsed time
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
-  };
 
   useEffect(() => {
     loadFFmpeg();
@@ -199,9 +191,6 @@ const Page = () => {
     setArticleProgress(0);
   };
 
-  // Update the transcribeAudio function to check subscription limits
-  // Find the transcribeAudio function and replace it with this:
-
   const transcribeAudio = async (audioBlob: Blob) => {
     if (!audioBlob || !user) return;
 
@@ -285,9 +274,6 @@ const Page = () => {
       setIsTranscribing(false);
     }
   };
-
-  // Update the generateArticle function to check subscription limits
-  // Find the generateArticle function and replace it with this:
 
   const generateArticle = async (transcriptionText: string) => {
     if (!transcriptionText || !user) return;
@@ -498,16 +484,6 @@ const Page = () => {
     document.body.removeChild(element);
   };
 
-  // Get file size in human-readable format
-  const getFileSize = (file: File): string => {
-    const size = file.size;
-    if (size < 1024 * 1024) {
-      return `${(size / 1024).toFixed(2)} KB`;
-    } else {
-      return `${(size / (1024 * 1024)).toFixed(2)} MB`;
-    }
-  };
-
   // Get current stage for display
   const getCurrentStage = () => {
     if (isGeneratingArticle) return "Generating Article";
@@ -521,121 +497,14 @@ const Page = () => {
     <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-12 max-w-5xl">
         {/* Header Section */}
-        <div className="text-center mb-12">
-          <div className="inline-block mb-4">
-            <div className="relative h-16 w-16 mx-auto">
-              <div className="absolute inset-0 rounded-full bg-purple-100 animate-pulse"></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <FileAudio className="h-8 w-8 text-purple-600" />
-              </div>
-            </div>
-          </div>
-          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 text-transparent bg-clip-text mb-4">
-            Video to Podcast & Transcript
-          </h1>
-          <p className="text-gray-600 max-w-2xl mx-auto text-lg">
-            Transform your videos into professional podcast episodes with full
-            transcripts instantly. Perfect for content creators, educators, and
-            businesses.
-          </p>
-          {/* Add settings button */}
-          <div className="mt-4">
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-purple-600 border-purple-200 hover:bg-purple-50"
-              onClick={() => router.push("/config")}
-            >
-              <Settings className="h-4 w-4 mr-2" />
-              Configure API Key
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-purple-600 border-purple-200 hover:bg-purple-50 ml-2"
-              onClick={() => router.push("/pricing")}
-            >
-              <CreditCard className="h-4 w-4 mr-2" />
-              Subscription Plans
-            </Button>
-          </div>
-        </div>
+        <Header />
 
         {/* Main Content */}
         <Card className="shadow-lg border-0 overflow-hidden mb-6">
           <CardContent className="p-0">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
               {/* Features Sidebar */}
-              <div className="bg-purple-50 p-6 md:p-8">
-                <h3 className="font-semibold text-lg mb-6 text-purple-800">
-                  Why Convert?
-                </h3>
-                <div className="space-y-6">
-                  <div className="flex items-start">
-                    <div className="bg-white p-2 rounded-full shadow-sm mr-4">
-                      <Sparkles className="h-5 w-5 text-purple-500" />
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-purple-900">
-                        Expand Your Reach
-                      </h4>
-                      <p className="text-sm text-gray-600">
-                        Repurpose content for audio platforms
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-start">
-                    <div className="bg-white p-2 rounded-full shadow-sm mr-4">
-                      <FileText className="h-5 w-5 text-purple-500" />
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-purple-900">
-                        SEO Benefits
-                      </h4>
-                      <p className="text-sm text-gray-600">
-                        Transcripts improve content discoverability
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-start">
-                    <div className="bg-white p-2 rounded-full shadow-sm mr-4">
-                      <FileEdit className="h-5 w-5 text-purple-500" />
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-purple-900">
-                        AI-Generated Articles
-                      </h4>
-                      <p className="text-sm text-gray-600">
-                        Turn your videos into blog posts automatically
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-12">
-                  <h3 className="font-semibold text-lg mb-4 text-purple-800">
-                    Supported Formats
-                  </h3>
-                  <div className="grid grid-cols-3 gap-2">
-                    {["MP4", "MOV", "AVI", "MKV", "WEBM", "FLV"].map(
-                      (format) => (
-                        <div
-                          key={format}
-                          className="bg-white rounded-md py-1 px-2 text-center text-sm font-medium text-purple-700 shadow-sm"
-                        >
-                          {format}
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-
-                {user && (
-                  <div className="mt-6">
-                    <SubscriptionUsage userId={user.uid} />
-                  </div>
-                )}
-              </div>
+              <Features />
 
               {/* Upload Area */}
               <div className="col-span-2 p-6 md:p-8">
