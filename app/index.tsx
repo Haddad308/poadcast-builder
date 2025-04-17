@@ -214,6 +214,13 @@ const Page = () => {
       formData.append("file", audioBlob, "audio.mp3");
       formData.append("model", "openai/whisper-large-v3-turbo");
 
+      // Add parameters to handle long-form audio
+      const params = {
+        return_timestamps: true,
+        chunk_length_s: 30, // Process in 30-second chunks
+      };
+      formData.append("parameters", JSON.stringify(params));
+
       // Simulate progress updates
       const progressInterval = setInterval(() => {
         setTranscriptionProgress((prev) => {
@@ -256,7 +263,12 @@ const Page = () => {
       }
 
       const result = await response.json();
-      setTranscription(result.text);
+      // Extract text from chunks if timestamps are returned
+      const transcriptionText = Array.isArray(result.chunks)
+        ? result.chunks.map((chunk: any) => chunk.text).join(" ")
+        : result.text;
+
+      setTranscription(transcriptionText);
 
       // Track transcription usage
       const transcriptionDuration =
@@ -265,7 +277,7 @@ const Page = () => {
 
       // Generate article if enabled
       if (enableArticleGeneration) {
-        await generateArticle(result.text);
+        await generateArticle(transcriptionText);
       }
     } catch (error) {
       console.error("Transcription error:", error);
