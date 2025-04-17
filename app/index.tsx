@@ -2,7 +2,9 @@
 
 import type React from "react";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { fetchFile, toBlobURL } from "@ffmpeg/util";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -28,6 +30,8 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/firebase/auth-context";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { getApiKey } from "@/firebase/firestore";
 import {
@@ -42,13 +46,37 @@ import Features from "@/components/Features";
 import Header from "@/components/Header";
 
 const Page = () => {
-  // Page States
+  const { user } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!user) {
+      router.push("/signin");
+    }
+  }, [user, router]);
+
+  const [videoUrl, setVideoUrl] = useState<string>("");
+  const [video, setVideo] = useState<File | null>(null);
+  const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number>(0);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [, setAudioBlob] = useState<Blob | null>(null);
+  const [isConverting, setIsConverting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [status, setStatus] = useState<string>("");
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcription, setTranscription] = useState<string | null>(null);
   const [enableTranscription, setEnableTranscription] = useState(true);
   const [enableArticleGeneration, setEnableArticleGeneration] = useState(false);
+  const [isGeneratingArticle, setIsGeneratingArticle] = useState(false);
+  const [article, setArticle] = useState<string | null>(null);
+  const [transcriptionProgress, setTranscriptionProgress] = useState(0);
+  const [articleProgress, setArticleProgress] = useState(0);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const [startTime, setStartTime] = useState<number | null>(null);
+
+  const ffmpegRef = useRef<FFmpeg>(new FFmpeg());
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Track elapsed time during conversion
@@ -119,10 +147,12 @@ const Page = () => {
     e.preventDefault();
     setIsDragging(true);
   };
+
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
   };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -138,6 +168,7 @@ const Page = () => {
       setError("Please drop a valid video file");
     }
   };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -149,7 +180,6 @@ const Page = () => {
     }
   };
 
-  // For canceling the conversion process
   const cancelConversion = () => {
     abortControllerRef.current?.abort();
     setIsConverting(false);
@@ -420,7 +450,6 @@ const Page = () => {
     }
   };
 
-  // copy text to clipboard
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setStatus("Copied to clipboard");
