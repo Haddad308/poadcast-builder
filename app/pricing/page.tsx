@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -77,8 +78,9 @@ export default function PricingPage() {
     fetchSubscription();
   }, [user, router]);
 
-  const createOrder = (data, actions) => {
+  const createOrder = (data: any, actions: any) => {
     return actions.order.create({
+      intent: "CAPTURE",
       purchase_units: [
         {
           description: "Lifetime Access to Video to Podcast & Transcript",
@@ -94,7 +96,7 @@ export default function PricingPage() {
     });
   };
 
-  const onApprove = async (data, actions) => {
+  const onApprove = async (data: any, actions: any) => {
     try {
       setIsProcessing(true);
       const details = await actions.order.capture();
@@ -229,7 +231,6 @@ export default function PricingPage() {
                       options={{
                         clientId: paypalClientId,
                         currency: "USD",
-                        intent: "capture",
                       }}
                     >
                       <PayPalButtons
