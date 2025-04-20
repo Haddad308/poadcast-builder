@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
-import { generateObject } from "ai";
 
 import {
   AlertCircle,
@@ -35,7 +34,6 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/firebase/auth-context";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { getApiKey } from "@/firebase/firestore";
 import {
   trackTranscriptionUsage,
   trackArticleGenerationUsage,
@@ -46,8 +44,7 @@ import { checkUsageLimits } from "@/firebase/subscription";
 import { formatTime, getFileSize } from "@/lib/helper";
 import Features from "@/components/Features";
 import Header from "@/components/Header";
-import { google } from "@ai-sdk/google";
-import { z } from "zod";
+import { getApiKey } from "@/firebase/firestore";
 
 const Page = () => {
   const { user } = useAuth();
@@ -288,7 +285,7 @@ const Page = () => {
 
       // Generate article if enabled
       if (enableArticleGeneration) {
-        await generateArticle(result.text);
+        await generateArticle("Customize your podcast and transcript");
       }
     } catch (error) {
       console.error("Transcription error:", error);
@@ -297,10 +294,6 @@ const Page = () => {
       setIsTranscribing(false);
     }
   };
-
-  const articleSchema = z.object({
-    content: z.string(),
-  });
 
   const generateArticle = async (transcriptionText: string) => {
     if (!transcriptionText || !user) return;
@@ -325,30 +318,28 @@ const Page = () => {
         });
       }, 1000);
 
-      const result = await generateObject({
-        temperature: 0.7,
-        model: google("gemini-2.0-flash-exp"),
-        system:
-          "You are a professional content writer. Based on the transcript, create a structured article with a title, and multiple headings each followed by a paragraph.",
-        schema: articleSchema,
-        messages: [
-          {
-            role: "user",
-            content: `Generate a well-structured article based on this transcript: "${transcriptionText.substring(
-              0,
-              4000
-            )}"`,
-          },
-        ],
+      // Make API call to our backend
+      const baseUrl = window.origin;
+      const response = await fetch(`${baseUrl}/api/generate-article`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          transcriptionText: transcriptionText,
+        }),
       });
 
+      if (!response.ok) {
+        throw new Error(`Article generation failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      setArticle(result.article);
       clearInterval(progressInterval);
       setArticleProgress(100);
 
-      const structuredArticle = result.object;
-      // You can now render `structuredArticle.title` and loop over `structuredArticle.headings`
-
-      setArticle(structuredArticle.content);
+      setArticle(result.content);
       await trackArticleGenerationUsage(user.uid);
     } catch (error) {
       console.error("Article generation error:", error);
