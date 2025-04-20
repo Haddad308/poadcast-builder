@@ -209,9 +209,28 @@ const Page = () => {
       setTranscriptionProgress(0);
       const startTranscriptionTime = Date.now();
 
-      // Create a FormData object to send the audio file
+      // Cut audio to 30 seconds using FFmpeg
+      const ffmpeg = ffmpegRef.current;
+      const inputFileName = "input_audio.mp3";
+      const outputFileName = "trimmed_audio.mp3";
+
+      await ffmpeg.writeFile(inputFileName, await fetchFile(audioBlob));
+      await ffmpeg.exec([
+        "-i",
+        inputFileName,
+        "-t",
+        "29", // Limit duration to 30 seconds
+        "-acodec",
+        "copy",
+        outputFileName,
+      ]);
+
+      const trimmedData = await ffmpeg.readFile(outputFileName);
+      const trimmedBlob = new Blob([trimmedData], { type: "audio/mp3" });
+
+      // Create a FormData object to send the trimmed audio file
       const formData = new FormData();
-      formData.append("file", audioBlob, "audio.mp3");
+      formData.append("file", trimmedBlob, "audio.mp3");
       formData.append("model", "openai/whisper-large-v3-turbo");
 
       // Simulate progress updates
