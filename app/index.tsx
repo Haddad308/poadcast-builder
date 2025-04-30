@@ -196,7 +196,7 @@ const Page = () => {
     if (!audioBlob || !user) return;
 
     try {
-      // Check subscription limits for transcription
+      // Check subscription limits for transcription 
       const usageLimits = await checkUsageLimits(user.uid, "transcription");
 
       if (usageLimits.hasReachedLimit) {
@@ -210,28 +210,9 @@ const Page = () => {
       setTranscriptionProgress(0);
       const startTranscriptionTime = Date.now();
 
-      // Cut audio to 30 seconds using FFmpeg
-      const ffmpeg = ffmpegRef.current;
-      const inputFileName = "input_audio.mp3";
-      const outputFileName = "trimmed_audio.mp3";
-
-      await ffmpeg.writeFile(inputFileName, await fetchFile(audioBlob));
-      await ffmpeg.exec([
-        "-i",
-        inputFileName,
-        "-t",
-        "29", // Limit duration to 30 seconds
-        "-acodec",
-        "copy",
-        outputFileName,
-      ]);
-
-      const trimmedData = await ffmpeg.readFile(outputFileName);
-      const trimmedBlob = new Blob([trimmedData], { type: "audio/mp3" });
-
-      // Create a FormData object to send the trimmed audio file
+      // Create a FormData object to send the audio file
       const formData = new FormData();
-      formData.append("file", trimmedBlob, "audio.mp3");
+      formData.append("file", audioBlob, "audio.mp3");
       formData.append("model", "openai/whisper-large-v3-turbo");
 
       // Simulate progress updates
@@ -260,8 +241,9 @@ const Page = () => {
       const response = await fetch(
         "https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo",
         {
-          method: "POST",
+          method: 'POST',
           headers: {
+            'Content-Type': 'audio/mpeg',
             Authorization: `Bearer ${apiKey}`,
           },
           body: formData,
