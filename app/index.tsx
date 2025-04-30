@@ -267,7 +267,7 @@ const Page = () => {
 
       // Generate article if enabled
       if (enableArticleGeneration) {
-        await generateArticle("Customize your podcast and transcript");
+        await generateArticle(result.text);
       }
     } catch (error) {
       console.error("Transcription error:", error);
@@ -628,7 +628,7 @@ const Page = () => {
                           <div className="flex items-center gap-2">
                             <Input
                               type="url"
-                              placeholder="Enter video URL (YouTube, Vimeo, Drive, etc.)"
+                              placeholder="Enter video URL (Drive only)"
                               value={videoUrl}
                               onChange={(e) => setVideoUrl(e.target.value)}
                               className="flex-1 border-purple-200 focus:border-purple-400"
